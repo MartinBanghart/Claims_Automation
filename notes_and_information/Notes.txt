@@ -1,0 +1,34 @@
+Steps (copy anything within quotations, don't include the quotes)
+-------
+1: Download python (https://www.python.org/downloads/) click "Download Python Install Manager"
+1.1: It might fail due to admin privileges, open clean cmd and type "python" this may work
+
+2: Download VSCode (enter this in cmd prompt " winget install -e --id Microsoft.VisualStudioCode ")
+
+3: Update Environment variables (Edit Environment Variables for your Account)
+--> 3.1: Add a user Variable called "Path" if it doesn't exist
+--> 3.2: Click to edit and add linke to python Scripts (something like this "C:\Users\banghamf\AppData\Local\Programs\Python\Python314\Bin\")
+
+4: Open up VScode and click File > Open Folder and select the folder where the code exists
+
+5: Click Terminal > New Terminal 
+
+6: Create a python virtual environment to save libraries by typing "python -m venv .venv" into terminal
+--> 6.1: Enter virtual environment by typing "venv\Scripts\Activate.ps1"
+--> 6.2: may need to try this "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass" and re try 6.1 if it fails
+--> 6.3 if all else fails, reload VsCode or open a new terminal and see if the terminal updates
+
+7: Enter "pip install -r requirements.txt" once terminal updates and shows (venv) in front of command line 
+7.1: this will download copies of necessary libraries into the virtual environment, it will take a little time, wait till the terminal shows a clean line
+
+8: Try to open up project by entering "streamlit run Home.py" into the terminal
+
+9: (outside this) Create clean copy of Syteline Excel data, use either Chad's legacy macro or the macro in this codes project folder utilities > excel > claims_macro
+
+10: drag that file onto the dashboard sidebar where it says upload on either Home or Dashboard page, doesn't matter which once
+
+11: if everything worked out, you can update the LaunchDashboard.bat file to simplify opening this in the future
+--> 11.1: update line 2 in the batch file where it says "cd /d "C:\Path\To\ValveClaimsDashboard" to the actual location folder location of the project
+--> 11.2: Copy the file as a shortcut to your desktop and then you should be able to click to open it 
+--> 11.3: it will open a cmd prompt window, DO NOT close this or else it will terminate the processes running the dashboard
+--> 11.4: when done close the page in browser, you can then click on the cmd prompt, click Ctrl+C and then Y to terminate the process when prompted
