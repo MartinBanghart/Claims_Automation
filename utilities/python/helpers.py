@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+from pandas.tseries.offsets import BDay
+import numpy as np
 import re
 
 import pythoncom
@@ -7,7 +9,126 @@ import win32com.client as win32
 
 import plotly.express as px
 
-# ------------------------------------------------
+# -----------------------------------------------------------------------
+
+def clean_syteline_data(uploaded_file, email_list_df):
+    
+    # --- Variables
+    buis_days_till_claim_due = 10
+    
+    # --- loading data from csv into dataframe
+    original_data = pd.read_csv(uploaded_file, encoding="utf-16",sep="\t", engine="python")
+
+    # # addding Report Due Date, Days Since Assigned, Days Since Approved, and Days Since Quote Sent columns
+    date_cols = ["Assigned Date", "Approval Date", "Quote Send Date"]
+
+    for col in date_cols:
+        original_data[col] = pd.to_datetime(original_data[col], errors="coerce")
+
+    # --- setting Report Due Date column 
+    original_data["Report Due Date"] = (original_data["Assigned Date"] + BDay(buis_days_till_claim_due)).dt.strftime("%m/%d/%Y")
+    
+    original_data["Report Due Date"] = pd.to_datetime(original_data["Report Due Date"],errors="coerce")
+
+    today = np.datetime64(pd.Timestamp.today().normalize(), "D")
+
+    # --- creating Days Since columns based off their respective intial date columns
+    for source_col, new_col in [
+        ("Assigned Date", "Days Since Assigned"),
+        ("Approval Date", "Days Since Approved"),
+        ("Quote Send Date", "Days Since Quote Sent"),
+    ]:
+        
+        original_data[new_col] = pd.NA
+
+        mask = original_data[source_col].notna()
+
+        original_data.loc[mask, new_col] = np.busday_count(original_data.loc[mask, source_col].values.astype("datetime64[D]"), today) #type:ignore
+
+    # --- not foolproof method of determining if sheet is from US or CDN syteline but works for now
+    if len(str(original_data['CCR#'][0])) == 6: # CCR numbers that are US 
+        og_data_with_email = pd.merge(original_data.copy(), email_list_df, left_on="User Name", right_on="userUS", how="left")
+    elif len(str(original_data['CCR#'][0])) == 5: # CCR numbers that are US 
+        og_data_with_email = pd.merge(original_data.copy(), email_list_df, left_on="User Name", right_on="userCDN", how="left")
+
+    # --- setting final dataframe with similar column ordering to original excel macro
+    clean_data = og_data_with_email[["Evaluation Group", "CCR#", "User Name", "email", "Valve Group",
+                            "Name", "Item",	"Evaluation Status", "Create Date",	
+                            "Assigned Date", "Report Due Date", "Approval Date", "Quote Send Date",
+                            "Quote Due Date", "Customer Response", "Evaluator's Comments ( Internal  Only)",
+                            "Description", "Days Since Assigned", "Days Since Approved", "Days Since Quote Sent" ]]
+
+    return clean_data
+
+# --------------------------------------------------------------------------------------------------------------
+# --- generates the dataframes for certain conditions from the cleaned syteline data for resuse
+def build_filtered_dfs(df, today):
+    username_notna_mask = (
+        df["User Name"].notna()
+        & (df["User Name"].astype(str).str.strip() != "")
+    )
+    
+    email_notna_mask = (df["email"].notna())
+
+    assigned_eval_df = df[
+        (df["Evaluation Status"] == "Assigned for Evaluation")
+        & username_notna_mask
+    ]
+    
+    # setting up evaluator count to have unassigned index value
+    pivot_df = df.copy()
+    pivot_df["User Name"] = (
+        pivot_df["User Name"]
+        .fillna("#Unassigned")
+        .replace("", "#Unassigned")
+        )
+        
+
+    return {
+        "assigned_eval_df": assigned_eval_df,
+
+        "overdue_assign_eval_df": assigned_eval_df[
+            (assigned_eval_df["Report Due Date"] < today)
+            & email_notna_mask
+        ],
+
+        "received_df": df[
+            (df["Evaluation Status"] == "Received")
+            & username_notna_mask
+            & email_notna_mask
+        ],
+
+        "pending_repair_df": df[
+            (df["Evaluation Status"] == "Pending Repair")
+            & username_notna_mask
+            & email_notna_mask
+        ],
+
+        "pending_quote_appr_df": df[
+            (df["Evaluation Status"] == "Pending Quote Approval")
+            & df["Customer Response"].notna()
+            & username_notna_mask
+            & email_notna_mask
+        ],
+
+        "pending_receipt_df": df[
+            (df["Evaluation Status"] == "Pending Receipt")
+            & email_notna_mask
+        ],
+        
+        "evaluator_count": pd.pivot_table(
+                    pivot_df,
+                    index="User Name",
+                    columns="Evaluation Status",
+                    values="CCR#",
+                    aggfunc="count",
+                    fill_value=0,
+                    margins=True,
+                    margins_name="Total"
+                )
+    }
+
+# --------------------------------------------------------------------------------------------------------------
 def metrics_icon(
         text: str, 
         background_color: str = "transparent", 
@@ -49,6 +170,7 @@ def clean_comments(text):
     text = re.sub(r"<[^>]+>", "", text)  # Remove HTML tags
     return text.strip()
 
+# --------------------------------------------------------------------------------------------------------------
 # Function that allows for user to end emails through their logged in instance of outlook
 # --- Ideal performance with outlook desktop version already open (works well for my 2022 version, idk about different versions)
 # --- Due to varied emails between US and CDN syteline, US_CDN argument must be explicitly stated to use proper emails
@@ -278,8 +400,7 @@ def send_email(US_CDN, status, claims_data, test_recipient=None):
         for s in successes:
             print(" ", s)
                 
-# ------------------------------------------------------------------------------------------------
-
+# --------------------------------------------------------------------------------------------------------------
 # function to create stacked bar charts by valve group for assigned claims
 # -- each bar represent an engineer
 # -- each stacked part of bar represents claims assigned to them in various evaluation statuses
@@ -335,10 +456,99 @@ def valve_group_status_chart(
         height=height,
         xaxis_title="Claims",
         yaxis_title="Engineer",
-        legend_title="Status"
+        legend_title="Status",
+        margin=dict(t=22, b=10, l=10, r=10)
     )
 
     st.plotly_chart(
         fig,
         width='content'
     )
+
+def valve_group_timeline_chart(df, valve_group, title=None, height=375):
+
+    sixty_days_ago = pd.Timestamp.today().normalize() - pd.Timedelta(days=60)
+
+    chart_df = df[
+        (df["Valve Group"] == valve_group)
+        & (df["Assigned Date"].notna())
+        & (df["User Name"].notna())
+    ].copy()
+
+    chart_df["Assigned Date"] = pd.to_datetime(
+        chart_df["Assigned Date"],
+        errors="coerce"
+    )
+
+    status_order = [
+        "Pending Receipt",
+        "Received",
+        "Assigned for Evaluation",
+        "Pending Quote Approval",
+        "Pending Repair",
+        "Closed"
+    ]
+
+    fig = px.scatter(
+        chart_df,
+        x="Assigned Date",
+        y="User Name",
+        color="Evaluation Status",
+        category_orders={
+            "Evaluation Status": status_order
+        },
+        hover_data=[
+            "CCR#",
+            "Name",
+            "Item",
+            "Evaluation Status"
+        ],
+        title=title
+    )
+    
+    fig.add_vline(
+        x=sixty_days_ago,
+        line_color="black",
+        line_width=2,
+        line_dash="dash",
+        annotation_text="60 Days",
+        annotation_position="top"
+    )
+
+    fig.update_traces(
+        marker=dict(size=10)
+    )
+
+    fig.update_layout(
+        height=height,
+        xaxis_title="Assigned Date",
+        yaxis_title="Engineer",
+        legend_title="Status",
+        margin=dict(t=22, b=10, l=10, r=10)
+    )
+
+    st.plotly_chart(
+        fig,
+        width="stretch"
+    )
+    
+# --------------------------------------------------------------------------
+def pending_receipt_45_days_data(df):
+
+    cutoff_date = pd.Timestamp.today().normalize() - pd.Timedelta(days=45)
+
+    created_dates = pd.to_datetime(
+        df["Create Date"],
+        errors="coerce"
+    )
+
+    past_receipt_due_df = df[
+        (df["Evaluation Status"] == "Pending Receipt")
+        & (
+            df["User Name"].isna()
+            | (df["User Name"].astype(str).str.strip() == "")
+        )
+        & (created_dates <= cutoff_date)
+    ][["CCR#", "Evaluation Status", "Name", "Create Date"]]
+
+    return past_receipt_due_df

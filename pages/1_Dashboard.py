@@ -1,16 +1,9 @@
 import streamlit as st
 import pandas as pd
 
-from utilities.python.helpers import metrics_icon, send_email, clean_comments
+from utilities.python.helpers import clean_syteline_data, metrics_icon, send_email, build_filtered_dfs 
 
-# -------------------------------------------
-st.set_page_config(
-    page_title="Valve Claims Dashboard",
-    layout="wide"
-)
-# -------------------------------------------
-today = pd.Timestamp.today()
-
+st.set_page_config(page_title="Valve Claims Dashboard", layout="wide")
 # -------------------------------------------
 st.markdown("""
 <style>
@@ -23,26 +16,13 @@ st.markdown("""
 
 # -------------------------------------------
 @st.cache_data
-def load_workbook(file):
-    return pd.read_excel(
-        file,
-        sheet_name=None
-    )
-    
+def load_data(uploaded_file, email_list_df):
+    return clean_syteline_data(uploaded_file, email_list_df)
+
 # -------------------------------------------
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Workbook",
-    type=["xlsm", "xlsx"]
-)
+today = pd.Timestamp.today().normalize()
 
-if uploaded_file:
-
-    st.session_state["workbook"] = pd.read_excel(
-        uploaded_file,
-        sheet_name=None,
-        engine="openpyxl",
-        header=0
-    )
+email_list_df = pd.read_excel(r"utilities\excel\email_list.xlsx")
 
 sheets = [
     "SyteLine Data",
@@ -52,35 +32,49 @@ sheets = [
     "Assigned for Evaluation",
     "Received"
 ]
+# ------------------------------ Main Data Upload --------------------------------
+# --------------------------------------------------------------------------------
+# creating location for user to upload file
+uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"] )
+
+# --- if a csv file has been uploaded, save this file to session state after running cleaing function on it
+# --- in addition, generate filtered dataframes for the specific claims conditions and save to session state
+if uploaded_file is not None:
+    syteline_data_df = load_data(uploaded_file, email_list_df)
     
-if "workbook" not in st.session_state:
-    st.warning("Please upload a workbook.")
+    st.session_state["syteline_data_df"] = syteline_data_df
+    st.session_state["filters"] = build_filtered_dfs(syteline_data_df, today)
+
+# --- if a csv file has not been uploaded, display the main page as instruction to load a file
+if "syteline_data_df" not in st.session_state:
+    st.warning("Please upload a SyteLine CSV export.")
     st.stop()
-    
-workbook = st.session_state["workbook"] 
 
-if workbook:
-    selected_sheet = st.pills(
-        "Sheet",
-        options=sheets,
-        default=sheets[0],
-        label_visibility="collapsed"
-    )
-    
-# ------------------------------------
-# --------------- DATA ---------------
-# ------------------------------------
-syteline_data_df = workbook["SyteLine Data"]
+# --------------------------------------------------------------------------------
+# loading data
+syteline_data_df = st.session_state["syteline_data_df"]
+filters = st.session_state["filters"]
 
-# ensuring that Report Due Date column uses datetime type
-syteline_data_df["Report Due Date"] = pd.to_datetime(syteline_data_df["Report Due Date"], errors="coerce")
-syteline_data_df["Evaluator's Comments ( Internal  Only)"] = syteline_data_df["Evaluator's Comments ( Internal  Only)"].apply(clean_comments)
+assigned_eval_df = filters["assigned_eval_df"]
+overdue_assign_eval_df = filters["overdue_assign_eval_df"]
+received_df = filters["received_df"]
+pending_repair_df = filters["pending_repair_df"]
+pending_quote_appr_df = filters["pending_quote_appr_df"]
+pending_receipt_df = filters["pending_receipt_df"]
+evaluator_count_df = filters["evaluator_count"]
+
+# --- reusable filters
+username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
+
+# --- Pills
+selected_sheet = st.pills("Sheet", options=sheets, default=sheets[0], label_visibility="collapsed")
 
 # creating a filtered total data dataframe that will be used for sidebar selectors
 # -- this will allow for creating subsets based on combinations of:
 # ------ Valve Group
 # ------ Eval Status
 # ------ Engineer 
+
 filtered_syteline_df = syteline_data_df.copy()
 
 if selected_sheet == "SyteLine Data":
@@ -135,37 +129,6 @@ if selected_sheet == "SyteLine Data":
         ]
 
 # --------------------------------------------------------------------------------------------------
-
-eval_count_df = workbook['Evaluator Count'].iloc[2:].reset_index(drop=True)
-# Make first remaining row the header
-eval_count_df.columns = eval_count_df.iloc[0]
-# Remove the row that is now being used as headers
-eval_count_df = eval_count_df.iloc[1:].reset_index(drop=True)
-
-pending_quote_appr_df = syteline_data_df[
-    (syteline_data_df["Evaluation Status"] == "Pending Quote Approval")
-    & (syteline_data_df["Customer Response"].notna())
-    & (syteline_data_df["User Name"].notna())
-]
-
-pending_repair_df = syteline_data_df[
-    (syteline_data_df["Evaluation Status"] == "Pending Repair")
-    & (syteline_data_df["User Name"].notna())
-]
-
-assign_eval_df = syteline_data_df[
-    (syteline_data_df["Evaluation Status"] == "Assigned for Evaluation")
-    & (syteline_data_df["User Name"].notna())
-    & (syteline_data_df["Report Due Date"] < today)
-]
-
-received_df = syteline_data_df[
-    (syteline_data_df["Evaluation Status"] == "Received")
-    & (syteline_data_df["User Name"].notna())
-    & (syteline_data_df["User Name"].astype(str).str.strip() != "")
-]
-
-# ----------------------------------------------------------------------------------------------
 # creating columns for Popover tabs that will allow for user to send emails as well as display certain metrics
 topcol1, topcol2, topcol3, topcol4, topcol5, topcol6 = st.columns([1, 1, 0.6, 0.7, 0.7, 0.7])
 
@@ -197,7 +160,7 @@ with topcol1:
         status_map = {
             "Overdue": (
                 "Overdue",
-                assign_eval_df
+                overdue_assign_eval_df
             ),
             "Pending Repair": (
                 "To be Closed",
@@ -240,10 +203,7 @@ with topcol2:
                 key="send_email_test_recip2"
             )
         
-        assigned_claims_df = syteline_data_df[
-            syteline_data_df["User Name"].notna()
-            & (syteline_data_df["User Name"].astype(str).str.strip() != "")
-        ]
+        assigned_claims_df = syteline_data_df[(username_notna_mask)]
 
         ccr_options = sorted(
             assigned_claims_df["CCR#"]
@@ -293,13 +253,13 @@ with topcol3:
     if selected_sheet == 'SyteLine Data':
         cur_df = filtered_syteline_df
     elif selected_sheet == 'Evaluator Count':
-        cur_df = pd.DataFrame()
+        cur_df = evaluator_count_df
     elif selected_sheet == "Pending Quote Approval":
         cur_df = pending_quote_appr_df
     elif selected_sheet == "Pending Repair":
         cur_df = pending_repair_df
     elif selected_sheet == "Assigned for Evaluation":
-        cur_df = assign_eval_df
+        cur_df = overdue_assign_eval_df
     elif selected_sheet == "Received":
         cur_df = received_df
     
@@ -333,7 +293,7 @@ with topcol5:
 # ----------------------------------------------------------------------------------------------
 with topcol6:
     metrics_icon(
-        text = f'Pending Rec | {len(syteline_data_df[syteline_data_df['Evaluation Status'] == 'Pending Receipt'])}', 
+        text=f"Pending Rec | {len(pending_receipt_df)}", 
         font_color='#a16207',
         background_color='#fef9d7',
         border_color='#a16207',   
@@ -353,9 +313,8 @@ if selected_sheet == 'SyteLine Data':
 # ----- Evaluator Count
 elif selected_sheet == "Evaluator Count":
     st.dataframe(
-        eval_count_df,
+        evaluator_count_df,
         width='stretch',  # type: ignore
-        hide_index=True,
         height=800
     )
     
@@ -380,7 +339,7 @@ elif selected_sheet == "Pending Repair":
 # ----- Assigned for Evaluation Sheet
 elif selected_sheet == "Assigned for Evaluation":
     st.dataframe(
-        assign_eval_df,
+        overdue_assign_eval_df,
         width='stretch', #type: ignore
         hide_index=True,
         height=800

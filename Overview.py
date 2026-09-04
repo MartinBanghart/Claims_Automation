@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
-
 import plotly.express as px
 
-from utilities.python.helpers import valve_group_status_chart
+from utilities.python.helpers import (  valve_group_status_chart, valve_group_timeline_chart, 
+                                        clean_syteline_data, build_filtered_dfs, pending_receipt_45_days_data)
 
 st.set_page_config(page_title="Overview", layout="wide")
-
 # ------------------------------------------------------------
 st.markdown("""
 <style>
@@ -16,85 +15,143 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+# -------------------------------------------
+@st.cache_data
+def load_data(uploaded_file, email_list_df):
+    return clean_syteline_data(uploaded_file, email_list_df)
 
 # ------------------------------------------------------------
-today = pd.Timestamp.today()
+today = pd.Timestamp.today().normalize()
 
+email_list_df = pd.read_excel(r"utilities\excel\email_list.xlsx")
 # ------------------------------------------------------------
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Workbook",
-    type=["xlsm", "xlsx"]
-)
+# ------------------------------ Main Data Upload --------------------------------
+# --------------------------------------------------------------------------------
+# creating location for user to upload file
+uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"] )
 
+# --- if a csv file has been uploaded, save this file to session state after running cleaing function on it
+# --- in addition, generate filtered dataframes for the specific claims conditions and save to session state
 if uploaded_file is not None:
-    st.session_state["workbook"] = pd.read_excel(
-        uploaded_file,
-        sheet_name=None,
-        engine="openpyxl",
-        header=0
-    )
+    syteline_data_df = load_data(uploaded_file, email_list_df)
+    
+    st.session_state["syteline_data_df"] = syteline_data_df
+    st.session_state["filters"] = build_filtered_dfs(syteline_data_df, today)
 
-if "workbook" not in st.session_state:
-    st.warning("Please upload a workbook.")
+# --- if a csv file has not been uploaded, display the main page as instruction to load a file
+if "syteline_data_df" not in st.session_state:
+    st.warning("Please upload a SyteLine CSV export.")
     st.stop()
 
-workbook = st.session_state["workbook"]
+# --------------------------------------------------------------------------------
+# loading data
+syteline_data_df = st.session_state["syteline_data_df"]
+filters = st.session_state["filters"]
+
+assigned_eval_df = filters["assigned_eval_df"]
+overdue_assign_eval_df = filters["overdue_assign_eval_df"]
+received_df = filters["received_df"]
+pending_repair_df = filters["pending_repair_df"]
+pending_quote_appr_df = filters["pending_quote_appr_df"]
+pending_receipt_df = filters["pending_receipt_df"]
+evaluator_count_df = filters["evaluator_count"]
+
+# --- reusable filters
+username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
 # ------------------------------------------------------------
 
-# # ----- SyteLine Data Sheet
-syteline_data_df = workbook["SyteLine Data"]
+eval_comment_lookup = st.sidebar.text_input("Enter CCR# to See Comments")
 
+if eval_comment_lookup:
+    try:
+        comments = syteline_data_df.loc[
+            syteline_data_df["CCR#"] == int(eval_comment_lookup),
+            "Evaluator's Comments ( Internal  Only)"
+        ].iloc[0]
+
+        st.sidebar.markdown(comments)
+    except (IndexError, ValueError):
+        st.sidebar.warning("CCR# not found")
+        
+
+# # ----- SyteLine Data Sheet
 def group_subset(group_num):
     return syteline_data_df[
         (syteline_data_df['Valve Group'] == group_num)
         & (syteline_data_df["User Name"].notna())
         ]
 
+# ---------------------------------------------------------------------------------------------------
+# ------------------------------------------- PAGE LAYOUT -------------------------------------------
+# ---------------------------------------------------------------------------------------------------
+
 col1, col2 = st.columns([1,1])
 
 with col1:
     with st.container(border=True):
-        valve_group_status_chart(syteline_data_df, 1, title=f"Valve Group 1 ({len(group_subset(1))})")
+        choice_vg1_graph = st.radio(label ="radio_graph1", options = ["Bar", "Timeline"], horizontal=True, index=0, label_visibility="collapsed")
+        if choice_vg1_graph == "Bar":
+            valve_group_status_chart(syteline_data_df, 1, title=f"Valve Group 1 ({len(group_subset(1))})")
+        elif choice_vg1_graph == "Timeline":
+            valve_group_timeline_chart(syteline_data_df, 1, title=f"Valve Group 1 Timeline ({len(group_subset(1))})")
+            
     with st.container(border=True):
-        valve_group_status_chart(syteline_data_df, 3, title=f"Valve Group 3 ({len(group_subset(3))})")
-        
+        choice_vg3_graph = st.radio(label ="radio_graph3", options = ["Bar", "Timeline"], horizontal=True, index=0, label_visibility="collapsed")
+        if choice_vg3_graph == "Bar":
+            valve_group_status_chart(syteline_data_df, 3, title=f"Valve Group 3 ({len(group_subset(3))})")
+        elif choice_vg3_graph == "Timeline":
+            valve_group_timeline_chart(syteline_data_df, 3, title=f"Valve Group 3 Timeline ({len(group_subset(3))})")
+
 with col2:
     with st.container(border=True):
-        valve_group_status_chart(syteline_data_df, 2, title=f"Valve Group 2 ({len(group_subset(2))})")
-        
-    subcol1, subcol2 = st.columns([1,1])
+        choice_vg2_graph = st.radio(label ="radio_graph2", options = ["Bar", "Timeline"], horizontal=True, index=0, label_visibility="collapsed")
+        if choice_vg2_graph == "Bar":
+            valve_group_status_chart(syteline_data_df, 2, title=f"Valve Group 2 ({len(group_subset(2))})")
+        elif choice_vg2_graph == "Timeline":
+            valve_group_timeline_chart(syteline_data_df, 2, title=f"Valve Group 2 Timeline ({len(group_subset(2))})")
     
-    with subcol1:
-        with st.container(border=True): # ----- TOTAL METRIC
-            st.metric(label="Total", value=len(syteline_data_df))
-            
-        with st.container(border=True):# ----- ASSIGNED FOR EVAL METRICS
-            assigned = len(syteline_data_df[(syteline_data_df["Evaluation Status"] == "Assigned for Evaluation") & (syteline_data_df["User Name"].notna())])
-            overdue_assign_eval = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Assigned for Evaluation") 
-                & (syteline_data_df["User Name"].notna())
-                & (syteline_data_df["Report Due Date"] < today)]
-            )
-            st.metric(label="Assigned for Evaluation | Overdue", value=f"{assigned} | {overdue_assign_eval}")
-            
-        with st.container(border=True): # ----- RECEIVED METRICS
-            rec = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Received"])
-            rec_assigned = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Received") & (syteline_data_df["User Name"].notna())])
-            st.metric(label="Received | Assigned", value=f"{rec} | {rec_assigned}")
-            
-    with subcol2:
-        with st.container(border=True): # ----- PENDING QUOTE APPROVAL METRICS
-            pending_quote_appr = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Pending Quote Approval"])
-            pending_quote_appr_rec = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Quote Approval") & (syteline_data_df["Customer Response"].notna())])
-            st.metric(label="Pending Quote | Disposition Received", value=f"{pending_quote_appr} | {pending_quote_appr_rec}")
-            
-        with st.container(border=True): # ----- PENDING REPAIR METRICS
-            pending_repair = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Repair") & (syteline_data_df["User Name"].notna())])
-            overdue_pending_repair = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Repair") 
-                        & (syteline_data_df["User Name"].notna())
+    with st.container(border=True):  
+        stats_radio = st.radio(label ="stats_radio", options = ["General Stats", "45 Days Pending"], horizontal=True, index=0, label_visibility="collapsed")
+        
+        subcol1, subcol2 = st.columns([1,1])
+        
+        if stats_radio == "General Stats":
+            with subcol1:
+                with st.container(border=True): # ----- TOTAL METRIC
+                    st.metric(label="Total", value=len(syteline_data_df))
+                    
+                with st.container(border=True): # ----- ASSIGNED FOR EVAL METRICS
+                    assigned = len(syteline_data_df[(syteline_data_df["Evaluation Status"] == "Assigned for Evaluation") & (username_notna_mask)])
+                    overdue_assign_eval = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Assigned for Evaluation") 
+                        & (username_notna_mask)
                         & (syteline_data_df["Report Due Date"] < today)]
-                        )
-            st.metric(label="Pending Repair | Overdue ", value=f"{pending_repair} | {overdue_pending_repair}")
+                    )
+                    st.metric(label="Assigned for Evaluation | Overdue", value=f"{assigned} | {overdue_assign_eval}")
+                    
+                with st.container(border=True): # ----- RECEIVED METRICS
+                    rec = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Received"])
+                    rec_assigned = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Received") & (username_notna_mask)])
+                    st.metric(label="Received | Assigned", value=f"{rec} | {rec_assigned}")
+                    
+            with subcol2:
+                with st.container(border=True): # ----- PENDING QUOTE APPROVAL METRICS
+                    pending_quote_appr = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Pending Quote Approval"])
+                    pending_quote_appr_rec = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Quote Approval") & (syteline_data_df["Customer Response"].notna())])
+                    st.metric(label="Pending Quote | Disposition Received", value=f"{pending_quote_appr} | {pending_quote_appr_rec}")
+                    
+                with st.container(border=True): # ----- PENDING REPAIR METRICS
+                    pending_repair = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Repair") & (username_notna_mask)])
+                    overdue_pending_repair = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Repair") 
+                                & (username_notna_mask)
+                                & (syteline_data_df["Report Due Date"] < today)]
+                                )
+                    st.metric(label="Pending Repair | Overdue ", value=f"{pending_repair} | {overdue_pending_repair}")
+                    
+                with st.container(border=True): # ----- PENDING RECEIPT METRICS
+                    pending_receipt = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Receipt")])
+                    st.metric(label="Pending Receipt", value=f"{pending_receipt}")
             
-        with st.container(border=True): # ----- PENDING RECEIPT METRICS
-            pending_receipt = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Receipt")])
-            st.metric(label="Pending Receipt", value=f"{pending_receipt}")
+        elif stats_radio =="45 Days Pending":
+            st.dataframe(pending_receipt_45_days_data(st.session_state["syteline_data_df"]), height=350)
+            
+            
