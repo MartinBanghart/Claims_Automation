@@ -29,8 +29,8 @@ sheets = [
     "Evaluator Count",
     "Pending Quote Approval",
     "Pending Repair",
-    "Assigned for Evaluation",
-    "Received"
+    "Assigned for Evaluation [Overdue]",
+    "Received [Assigned]"
 ]
 # ------------------------------ Main Data Upload --------------------------------
 # --------------------------------------------------------------------------------
@@ -52,16 +52,20 @@ if "syteline_data_df" not in st.session_state:
 
 # --------------------------------------------------------------------------------
 # loading data
+# loading data
 syteline_data_df = st.session_state["syteline_data_df"]
 filters = st.session_state["filters"]
 
 assigned_eval_df = filters["assigned_eval_df"]
-overdue_assign_eval_df = filters["overdue_assign_eval_df"]
+overdue_assigned_eval_df = filters["overdue_assigned_eval_df"]
 received_df = filters["received_df"]
+received_assigned_df = filters["received_assigned_df"]
 pending_repair_df = filters["pending_repair_df"]
-pending_quote_appr_df = filters["pending_quote_appr_df"]
+overdue_pending_repair_df = filters["overdue_pending_repair_df"]
+pending_quote_appr_res_df = filters["pending_quote_appr_df"]
 pending_receipt_df = filters["pending_receipt_df"]
 evaluator_count_df = filters["evaluator_count"]
+not_from_valve_groups_df = filters["not_from_valve_groups_df"]
 
 # --- reusable filters
 username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
@@ -160,7 +164,7 @@ with topcol1:
         status_map = {
             "Overdue": (
                 "Overdue",
-                overdue_assign_eval_df
+                overdue_assigned_eval_df
             ),
             "Pending Repair": (
                 "To be Closed",
@@ -172,7 +176,7 @@ with topcol1:
             ),
             "Quote Approved": (
                 "Quote Approved",
-                pending_quote_appr_df
+                pending_quote_appr_res_df
             )
         }
 
@@ -255,12 +259,12 @@ with topcol3:
     elif selected_sheet == 'Evaluator Count':
         cur_df = evaluator_count_df
     elif selected_sheet == "Pending Quote Approval":
-        cur_df = pending_quote_appr_df
+        cur_df = pending_quote_appr_res_df
     elif selected_sheet == "Pending Repair":
         cur_df = pending_repair_df
-    elif selected_sheet == "Assigned for Evaluation":
-        cur_df = overdue_assign_eval_df
-    elif selected_sheet == "Received":
+    elif selected_sheet == "Assigned for Evaluation [Overdue]":
+        cur_df = overdue_assigned_eval_df
+    elif selected_sheet == "Received [Assigned]":
         cur_df = received_df
     
     metrics_icon(
@@ -321,7 +325,7 @@ elif selected_sheet == "Evaluator Count":
 # ----- Pending Quote Approval Sheet
 elif selected_sheet == "Pending Quote Approval":
     st.dataframe(
-        pending_quote_appr_df,
+        pending_quote_appr_res_df,
         width='stretch', #type: ignore
         hide_index=True,
         height=800
@@ -337,18 +341,18 @@ elif selected_sheet == "Pending Repair":
     )
     
 # ----- Assigned for Evaluation Sheet
-elif selected_sheet == "Assigned for Evaluation":
+elif selected_sheet == "Assigned for Evaluation [Overdue]":
     st.dataframe(
-        overdue_assign_eval_df,
+        overdue_assigned_eval_df,
         width='stretch', #type: ignore
         hide_index=True,
         height=800
     )
 
 # ----- Received Sheet
-elif selected_sheet == "Received":
+elif selected_sheet == "Received [Assigned]":
     st.dataframe(
-        received_df,
+        received_assigned_df,
         width='stretch', #type: ignore
         hide_index=True,
         height=800

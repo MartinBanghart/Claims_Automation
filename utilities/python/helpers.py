@@ -2,14 +2,52 @@ import streamlit as st
 import pandas as pd
 from pandas.tseries.offsets import BDay
 import numpy as np
+import csv
 import re
-
 import pythoncom
 import win32com.client as win32
-
 import plotly.express as px
 
 # -----------------------------------------------------------------------
+
+def load_raw_csv(uploaded_file):
+
+    uploaded_file.seek(0)
+    # standard ToExcel version of syteline data from the online version
+    # tries to read it as UTF-16 tab-delimited data
+    try:
+        return pd.read_csv(
+            uploaded_file,
+            encoding="utf-16",
+            sep="\t"
+        )
+
+    except Exception:
+        pass
+
+    uploaded_file.seek(0) # resets cursor for the file being read to the beginning
+
+    # same thing but different parser using python
+    try:
+        return pd.read_csv(
+            uploaded_file,
+            encoding="utf-16",
+            sep="\t",
+            engine="python"
+        )
+
+    except Exception:
+        pass
+
+    uploaded_file.seek(0)
+
+    return pd.read_csv(
+        uploaded_file,
+        encoding="utf-16",
+        sep="\t",
+        quoting=csv.QUOTE_NONE, # this solves an issue with the desktop saved version of syteline excel exports - parser does not treat quotes as quotes
+        engine="python"
+    )
 
 def clean_syteline_data(uploaded_file, email_list_df):
     
@@ -17,7 +55,9 @@ def clean_syteline_data(uploaded_file, email_list_df):
     buis_days_till_claim_due = 10
     
     # --- loading data from csv into dataframe
-    original_data = pd.read_csv(uploaded_file, encoding="utf-16",sep="\t", engine="python")
+    # original_data = pd.read_csv(uploaded_file, encoding="utf-16",sep="\t", engine="python")
+    
+    original_data = load_raw_csv(uploaded_file)
 
     # # addding Report Due Date, Days Since Assigned, Days Since Approved, and Days Since Quote Sent columns
     date_cols = ["Assigned Date", "Approval Date", "Quote Send Date"]
@@ -63,6 +103,7 @@ def clean_syteline_data(uploaded_file, email_list_df):
 # --------------------------------------------------------------------------------------------------------------
 # --- generates the dataframes for certain conditions from the cleaned syteline data for resuse
 def build_filtered_dfs(df, today):
+    
     username_notna_mask = (
         df["User Name"].notna()
         & (df["User Name"].astype(str).str.strip() != "")
@@ -70,11 +111,7 @@ def build_filtered_dfs(df, today):
     
     email_notna_mask = (df["email"].notna())
 
-    assigned_eval_df = df[
-        (df["Evaluation Status"] == "Assigned for Evaluation")
-        & username_notna_mask
-    ]
-    
+
     # setting up evaluator count to have unassigned index value
     pivot_df = df.copy()
     pivot_df["User Name"] = (
@@ -85,14 +122,23 @@ def build_filtered_dfs(df, today):
         
 
     return {
-        "assigned_eval_df": assigned_eval_df,
+        "assigned_eval_df": df[
+            (df["Evaluation Status"] == "Assigned for Evaluation")
+            & username_notna_mask
+        ],
 
-        "overdue_assign_eval_df": assigned_eval_df[
-            (assigned_eval_df["Report Due Date"] < today)
+        "overdue_assigned_eval_df": df[
+            (df["Evaluation Status"] == "Assigned for Evaluation")
+            & username_notna_mask
+            & (df["Report Due Date"] < today)
             & email_notna_mask
         ],
 
         "received_df": df[
+            (df["Evaluation Status"] == "Received")
+        ],
+        
+        "received_assigned_df": df[
             (df["Evaluation Status"] == "Received")
             & username_notna_mask
             & email_notna_mask
@@ -103,6 +149,11 @@ def build_filtered_dfs(df, today):
             & username_notna_mask
             & email_notna_mask
         ],
+        
+        "overdue_pending_repair_df": df[(df['Evaluation Status'] == "Pending Repair") 
+            & (username_notna_mask)
+            & (df["Report Due Date"] < today)
+            ],
 
         "pending_quote_appr_df": df[
             (df["Evaluation Status"] == "Pending Quote Approval")
@@ -115,6 +166,11 @@ def build_filtered_dfs(df, today):
             (df["Evaluation Status"] == "Pending Receipt")
             & email_notna_mask
         ],
+        
+        "not_from_valve_groups_df": df[
+            df["Valve Group"].isna()
+            & username_notna_mask
+            ],
         
         "evaluator_count": pd.pivot_table(
                     pivot_df,

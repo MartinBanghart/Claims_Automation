@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from utilities.python.helpers import (  valve_group_status_chart, valve_group_timeline_chart, 
+from utilities.python.helpers import (  valve_group_status_chart, valve_group_timeline_chart, load_raw_csv,
                                         clean_syteline_data, build_filtered_dfs, pending_receipt_45_days_data)
 
 st.set_page_config(page_title="Overview", layout="wide")
@@ -49,12 +49,15 @@ syteline_data_df = st.session_state["syteline_data_df"]
 filters = st.session_state["filters"]
 
 assigned_eval_df = filters["assigned_eval_df"]
-overdue_assign_eval_df = filters["overdue_assign_eval_df"]
+overdue_assigned_eval_df = filters["overdue_assigned_eval_df"]
 received_df = filters["received_df"]
+received_assigned_df = filters["received_assigned_df"]
 pending_repair_df = filters["pending_repair_df"]
-pending_quote_appr_df = filters["pending_quote_appr_df"]
+overdue_pending_repair_df = filters["overdue_pending_repair_df"]
+pending_quote_appr_res_df = filters["pending_quote_appr_df"]
 pending_receipt_df = filters["pending_receipt_df"]
 evaluator_count_df = filters["evaluator_count"]
+not_from_valve_groups_df = filters["not_from_valve_groups_df"]
 
 # --- reusable filters
 username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
@@ -111,7 +114,7 @@ with col2:
             valve_group_timeline_chart(syteline_data_df, 2, title=f"Valve Group 2 Timeline ({len(group_subset(2))})")
     
     with st.container(border=True):  
-        stats_radio = st.radio(label ="stats_radio", options = ["General Stats", "45 Days Pending"], horizontal=True, index=0, label_visibility="collapsed")
+        stats_radio = st.radio(label ="stats_radio", options = ["General Stats", "45 Days Pending", "Outsiders"], horizontal=True, index=0, label_visibility="collapsed")
         
         subcol1, subcol2 = st.columns([1,1])
         
@@ -121,37 +124,27 @@ with col2:
                     st.metric(label="Total", value=len(syteline_data_df))
                     
                 with st.container(border=True): # ----- ASSIGNED FOR EVAL METRICS
-                    assigned = len(syteline_data_df[(syteline_data_df["Evaluation Status"] == "Assigned for Evaluation") & (username_notna_mask)])
-                    overdue_assign_eval = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Assigned for Evaluation") 
-                        & (username_notna_mask)
-                        & (syteline_data_df["Report Due Date"] < today)]
-                    )
-                    st.metric(label="Assigned for Evaluation | Overdue", value=f"{assigned} | {overdue_assign_eval}")
+                    st.metric(label="Assigned for Evaluation | Overdue", value=f"{len(assigned_eval_df)} | {len(overdue_assigned_eval_df)}")
                     
                 with st.container(border=True): # ----- RECEIVED METRICS
-                    rec = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Received"])
-                    rec_assigned = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Received") & (username_notna_mask)])
-                    st.metric(label="Received | Assigned", value=f"{rec} | {rec_assigned}")
+                    st.metric(label="Received | Assigned", value=f"{len(received_df)} | {len(received_assigned_df)}")
                     
             with subcol2:
                 with st.container(border=True): # ----- PENDING QUOTE APPROVAL METRICS
                     pending_quote_appr = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Pending Quote Approval"])
-                    pending_quote_appr_rec = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Quote Approval") & (syteline_data_df["Customer Response"].notna())])
-                    st.metric(label="Pending Quote | Disposition Received", value=f"{pending_quote_appr} | {pending_quote_appr_rec}")
+                    st.metric(label="Pending Quote | Disposition Received", value=f"{pending_quote_appr} | {len(pending_quote_appr_res_df)}")
                     
                 with st.container(border=True): # ----- PENDING REPAIR METRICS
-                    pending_repair = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Repair") & (username_notna_mask)])
-                    overdue_pending_repair = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Repair") 
-                                & (username_notna_mask)
-                                & (syteline_data_df["Report Due Date"] < today)]
-                                )
-                    st.metric(label="Pending Repair | Overdue ", value=f"{pending_repair} | {overdue_pending_repair}")
+                    st.metric(label="Pending Repair | Overdue ", value=f"{len(pending_repair_df)} | {len(overdue_pending_repair_df)}")
                     
                 with st.container(border=True): # ----- PENDING RECEIPT METRICS
                     pending_receipt = len(syteline_data_df[(syteline_data_df['Evaluation Status'] == "Pending Receipt")])
                     st.metric(label="Pending Receipt", value=f"{pending_receipt}")
             
-        elif stats_radio =="45 Days Pending":
+        elif stats_radio == "45 Days Pending":
             st.dataframe(pending_receipt_45_days_data(st.session_state["syteline_data_df"]), height=350)
+            
+        elif stats_radio == "Outsiders":
+            st.dataframe(not_from_valve_groups_df, height=350)
             
             
