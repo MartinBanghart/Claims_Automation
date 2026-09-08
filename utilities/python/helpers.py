@@ -7,48 +7,50 @@ import re
 import pythoncom
 import win32com.client as win32
 import plotly.express as px
+from openpyxl import load_workbook
 
 # -----------------------------------------------------------------------
+def load_raw_csv(file_source):
 
-def load_raw_csv(uploaded_file):
+    # streamlit uploaded file
+    if hasattr(file_source, "seek"):
+        file_source.seek(0) # resets cursor for the file being read to the beginning
 
-    uploaded_file.seek(0)
     # standard ToExcel version of syteline data from the online version
     # tries to read it as UTF-16 tab-delimited data
     try:
         return pd.read_csv(
-            uploaded_file,
+            file_source,
             encoding="utf-16",
             sep="\t"
         )
-
     except Exception:
         pass
 
-    uploaded_file.seek(0) # resets cursor for the file being read to the beginning
+    if hasattr(file_source, "seek"):
+        file_source.seek(0)
 
-    # same thing but different parser using python
     try:
         return pd.read_csv(
-            uploaded_file,
+            file_source,
             encoding="utf-16",
             sep="\t",
             engine="python"
         )
-
     except Exception:
         pass
 
-    uploaded_file.seek(0)
+    if hasattr(file_source, "seek"):
+        file_source.seek(0)
 
     return pd.read_csv(
-        uploaded_file,
+        file_source,
         encoding="utf-16",
         sep="\t",
         quoting=csv.QUOTE_NONE, # this solves an issue with the desktop saved version of syteline excel exports - parser does not treat quotes as quotes
         engine="python"
     )
-
+# --------------------------------------------------------------------------------------------------------
 def clean_syteline_data(uploaded_file, email_list_df):
     
     # --- Variables
@@ -153,7 +155,7 @@ def build_filtered_dfs(df, today):
         "overdue_pending_repair_df": df[(df['Evaluation Status'] == "Pending Repair") 
             & (username_notna_mask)
             & (df["Report Due Date"] < today)
-            ],
+        ],
 
         "pending_quote_appr_df": df[
             (df["Evaluation Status"] == "Pending Quote Approval")
@@ -164,13 +166,19 @@ def build_filtered_dfs(df, today):
 
         "pending_receipt_df": df[
             (df["Evaluation Status"] == "Pending Receipt")
-            & email_notna_mask
         ],
         
         "not_from_valve_groups_df": df[
             df["Valve Group"].isna()
             & username_notna_mask
-            ],
+        ],
+        
+        "amat_df": df[
+            df["Name"].str.contains(r"Applied Materials", case=False, na=False)
+            & (df["Evaluation Status"] == "Pending Quote Approval") # claim is Pending Quote Approval
+            & ((today - df["Quote Send Date"]).dt.days >= 14) # 45 days have elapsed since it quote was sent
+            & (df["Customer Response"].isna()) # no customer response has been logged
+        ],
         
         "evaluator_count": pd.pivot_table(
                     pivot_df,
@@ -181,7 +189,7 @@ def build_filtered_dfs(df, today):
                     fill_value=0,
                     margins=True,
                     margins_name="Total"
-                )
+        )
     }
 
 # --------------------------------------------------------------------------------------------------------------
@@ -608,3 +616,41 @@ def pending_receipt_45_days_data(df):
     ][["CCR#", "Evaluation Status", "Name", "Create Date"]]
 
     return past_receipt_due_df
+
+# --------------------------------------------------------------------------
+def load_product_series_data(file_path):
+    # load workbook with openpyxl and properties like created_date
+    wb = load_workbook(file_path, read_only=True)
+    created_date = wb.properties.created
+
+    # read worksheet into DataFrame
+    ws = wb.active
+    data = pd.DataFrame(ws.values) #type:ignore
+
+    # First row as headers
+    data.columns = data.iloc[0]
+    data = data.iloc[1:].reset_index(drop=True)
+
+    # filtering down to specific columns
+    select_data = data[
+        [
+            "Product Series",
+            "Product Code [...]",
+            "Product Group [...]",
+            "Technical Contact [...]",
+            "Secondary Technical Contact [...]",
+            "Description",
+        ]
+    ].sort_values(by="Product Group [...]")
+
+    # renaming columns to not have ARAS defined ellipses 
+    final_data = select_data.rename(
+        columns={
+            "Product Code [...]": "Product Code",
+            "Product Group [...]": "Product Group",
+            "Technical Contact [...]": "Tech Contact",
+            "Secondary Technical Contact [...]": "Secondary Tech Contact",
+        }
+    )
+    
+    return final_data, created_date

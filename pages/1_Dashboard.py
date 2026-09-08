@@ -27,7 +27,7 @@ email_list_df = pd.read_excel(r"utilities\excel\email_list.xlsx")
 sheets = [
     "SyteLine Data",
     "Evaluator Count",
-    "Pending Quote Approval",
+    "Pending Quote Approval (w/ Resp.)",
     "Pending Repair",
     "Assigned for Evaluation [Overdue]",
     "Received [Assigned]"
@@ -52,7 +52,6 @@ if "syteline_data_df" not in st.session_state:
 
 # --------------------------------------------------------------------------------
 # loading data
-# loading data
 syteline_data_df = st.session_state["syteline_data_df"]
 filters = st.session_state["filters"]
 
@@ -66,6 +65,7 @@ pending_quote_appr_res_df = filters["pending_quote_appr_df"]
 pending_receipt_df = filters["pending_receipt_df"]
 evaluator_count_df = filters["evaluator_count"]
 not_from_valve_groups_df = filters["not_from_valve_groups_df"]
+amat_df = filters["amat_df"]
 
 # --- reusable filters
 username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
@@ -258,7 +258,7 @@ with topcol3:
         cur_df = filtered_syteline_df
     elif selected_sheet == 'Evaluator Count':
         cur_df = evaluator_count_df
-    elif selected_sheet == "Pending Quote Approval":
+    elif selected_sheet == "Pending Quote Approval (w/ Resp.)":
         cur_df = pending_quote_appr_res_df
     elif selected_sheet == "Pending Repair":
         cur_df = pending_repair_df
@@ -323,7 +323,7 @@ elif selected_sheet == "Evaluator Count":
     )
     
 # ----- Pending Quote Approval Sheet
-elif selected_sheet == "Pending Quote Approval":
+elif selected_sheet == "Pending Quote Approval (w/ Resp.)":
     st.dataframe(
         pending_quote_appr_res_df,
         width='stretch', #type: ignore
