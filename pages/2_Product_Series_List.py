@@ -37,11 +37,11 @@ if "syteline_data_df" not in st.session_state:
     st.stop()
 
 # --------------------------------------------------------------------------
-mcol1, mcol2 = st.columns([1,1.5])
+mcol1, mcol2 = st.columns([2,0.25])
 
 with mcol1:
     st.write(f"Date Created: {created_date:%m/%d/%Y %H:%M}" if created_date else "No created date found")
     st.dataframe(final_data, width='stretch', height=800, hide_index=True)
 
-with mcol2:
-    st.write("Claims by Product Code")
+# with mcol2:
+#     st.write("Claims by Product Code")
