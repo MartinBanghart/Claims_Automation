@@ -172,7 +172,7 @@ with topcol1:
             ),
             "Received": (
                 "Newly Assigned",
-                received_df
+                received_assigned_df
             ),
             "Quote Approved": (
                 "Quote Approved",
@@ -265,7 +265,7 @@ with topcol3:
     elif selected_sheet == "Assigned for Evaluation [Overdue]":
         cur_df = overdue_assigned_eval_df
     elif selected_sheet == "Received [Assigned]":
-        cur_df = received_df
+        cur_df = received_assigned_df
     
     metrics_icon(
         text=f"Current | {len(cur_df)}",

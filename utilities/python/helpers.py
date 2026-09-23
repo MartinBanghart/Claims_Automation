@@ -94,7 +94,7 @@ def clean_syteline_data(uploaded_file, email_list_df):
         og_data_with_email = pd.merge(original_data.copy(), email_list_df, left_on="User Name", right_on="userCDN", how="left")
 
     # --- setting final dataframe with similar column ordering to original excel macro
-    clean_data = og_data_with_email[["Evaluation Group", "CCR#", "User Name", "email", "Valve Group",
+    clean_data = og_data_with_email[["Evaluation Group", "CCR#", "name", "User Name", "email", "Valve Group",
                             "Name", "Item",	"Evaluation Status", "Create Date",	
                             "Assigned Date", "Report Due Date", "Approval Date", "Quote Send Date",
                             "Quote Due Date", "Customer Response", "Evaluator's Comments ( Internal  Only)",
@@ -241,7 +241,7 @@ def clean_comments(text):
 
 def send_email(US_CDN, status, claims_data, test_recipient=None):
     
-    email_list_df = pd.read_excel(r'utilities\excel\email_list.xlsx')
+    # email_list_df = pd.read_excel(r'utilities\excel\email_list.xlsx')
     
     test_mode = US_CDN == "Test"
     
@@ -251,28 +251,29 @@ def send_email(US_CDN, status, claims_data, test_recipient=None):
         if "name" not in claims_data.columns:
             claims_data["name"] = "Test User"
 
-    if not test_mode:
+    # # # Not necessary to merge here with merge happening prior when clean_syteline_data function is run on initial dashboard file load
+    # if not test_mode:
         # Merging emails on to the claims_data dataframe
-        if US_CDN == "US":
-            claims_data = claims_data.merge(
-                email_list_df[
-                    ["userUS", "email", "name"]
-                ],
-                left_on="User Name",
-                right_on="userUS",
-                how="left"
-            )
+        # if US_CDN == "US":
+            # claims_data = claims_data.merge(
+            #     email_list_df[
+            #         ["userUS", "email", "name"]
+            #     ],
+            #     left_on="User Name",
+            #     right_on="userUS",
+            #     how="left"
+            # )
 
-        elif US_CDN == "CDN":
-            claims_data = claims_data.merge(
-                email_list_df[
-                    ["userCDN", "email", "name"]
-                ],
-                left_on="User Name",
-                right_on="userCDN",
-                how="left"
-            )    
-    
+        # elif US_CDN == "CDN":
+            # claims_data = claims_data.merge(
+            #     email_list_df[
+            #         ["userCDN", "email", "name"]
+            #     ],
+            #     left_on="User Name",
+            #     right_on="userCDN",
+            #     how="left"
+            # )    
+            
     # templates for each status
     templates = {
         # ----- Overdue Claims
@@ -329,7 +330,7 @@ def send_email(US_CDN, status, claims_data, test_recipient=None):
             <html><body>
                 <p>Hello <b>{row['name']}</b>,</p>
                 <p>This is a reminder you have a claim waiting to be closed.</p>
-                <p><span style="color:red;"> <b>{row['Days Since Assigned']}</b> days have elapsed since this claim was approved. </span> </p>
+                <p><span style="color:red;"> <b>{row['Days Since Approved']}</b> days have elapsed since this claim was approved. </span> </p>
                 <p>Please enter Syteline and change evaluation status to <b>Closed</b> after completing necessary rework/scrap.</p>
                 
                 <hr style="border: 0; border-top: 1px solid #bbb; margin: 18px 0;">
@@ -651,6 +652,14 @@ def load_product_series_data(file_path):
             "Technical Contact [...]": "Tech Contact",
             "Secondary Technical Contact [...]": "Secondary Tech Contact",
         }
+    )
+    
+    # convert "UTC - Valve 1" -> 1, "UTC - Valve - 2" -> 2, etc.
+    final_data["Product Group"] = (
+        final_data["Product Group"]
+        .astype(str)
+        .str.extract(r"(\d+)$")[0]
+        .astype("Int64")
     )
     
     return final_data, created_date

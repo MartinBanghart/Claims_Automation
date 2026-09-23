@@ -153,46 +153,57 @@ with col2:
                             delta_color="inverse",
                             delta_description="since last week"
                             )
-                    
+                # ------------------------------------------------------     
                 with st.container(border=True): # ----- ASSIGNED FOR EVAL METRICS
-                    st.metric(
-                            label="Assigned for Evaluation | Overdue", 
-                            value=f"{len(assigned_eval_df)} | {len(overdue_assigned_eval_df)}",
-                            delta=f"{len(assigned_eval_df)-len(lw_assigned_eval_df)} | {len(overdue_assigned_eval_df)-len(lw_overdue_assigned_eval_df)}",
-                            delta_color="inverse",
-                            delta_description="since last week"
-                            )
+                    metric_title_col1, metric_title_col2, metric_title_col3 = st.columns([0.4, 1, 0.10])
+                    with metric_title_col2:
+                        st.markdown("<h6>Assigned for Eval</h6>",unsafe_allow_html=True)
                     
+                    metric_col1, metric_col2 = st.columns([1,1])
+                    with metric_col1:
+                        st.metric(
+                                label="Total", 
+                                value=f"{len(assigned_eval_df)} ",
+                                delta=f"{len(assigned_eval_df)-len(lw_assigned_eval_df)}",
+                                delta_color="inverse",
+                                delta_description="last week"
+                                )
+                        
+                    with metric_col2:
+                        st.metric(
+                                label="Overdue", 
+                                value=f"{len(overdue_assigned_eval_df)}",
+                                delta=f"{len(overdue_assigned_eval_df)-len(lw_overdue_assigned_eval_df)}",
+                                delta_color="inverse",
+                                delta_description="last week"
+                                )
+                # ------------------------------------------------------    
                 with st.container(border=True): # ----- RECEIVED METRICS
-                    st.metric(
-                            label="Received | Assigned", 
-                            value=f"{len(received_df)} | {len(received_assigned_df)}",
-                            delta=f"{len(received_df)-len(lw_received_df)} | {len(received_assigned_df)-len(lw_received_assigned_df)}",
-                            delta_color="inverse",
-                            delta_description="since last week"
-                            )
+                    metric_title_col1, metric_title_col2, metric_title_col3 = st.columns([0.75, 1, 0.3])
+                    with metric_title_col2:
+                        st.markdown("<h6>Received</h6>",unsafe_allow_html=True)
+                    
+                    metric_col1, metric_col2 = st.columns([1,1])
+                    with metric_col1:
+                        st.metric(
+                                label="Total", 
+                                value=f"{len(received_df)}",
+                                delta=f"{len(received_df)-len(lw_received_df)}",
+                                delta_color="inverse",
+                                delta_description="since last week"
+                                )
+                        
+                    with metric_col2:
+                        st.metric(
+                                label="Assigned", 
+                                value=f"{len(received_assigned_df)}",
+                                delta=f"{len(received_assigned_df)-len(lw_received_assigned_df)}",
+                                delta_color="inverse",
+                                delta_description="since last week"
+                                )
                     
             with subcol2:
-                with st.container(border=True): # ----- PENDING QUOTE APPROVAL METRICS
-                    pending_quote_appr = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Pending Quote Approval"])
-                    lw_pending_quote_appr = len(lw_data_df[lw_data_df['Evaluation Status'] == "Pending Quote Approval"])
-                    st.metric(
-                            label="Pending Quote | Disposition Received", 
-                            value=f"{pending_quote_appr} | {len(pending_quote_appr_res_df)}",
-                            delta=f"{(pending_quote_appr)-(lw_pending_quote_appr)} | {len(pending_quote_appr_res_df)-len(lw_pending_quote_appr_res_df)}",
-                            delta_color="inverse",
-                            delta_description="since last week"
-                            )
-                    
-                with st.container(border=True): # ----- PENDING REPAIR METRICS
-                    st.metric(
-                            label="Pending Repair | Overdue ", 
-                            value=f"{len(pending_repair_df)} | {len(overdue_pending_repair_df)}",
-                            delta=f"{len(pending_repair_df)-len(lw_pending_repair_df)} | {len(overdue_pending_repair_df)-len(lw_overdue_pending_repair_df)}",
-                            delta_color="inverse",
-                            delta_description="since last week"
-                            )
-                    
+                # --------------------------------------------------------------------
                 with st.container(border=True): # ----- PENDING RECEIPT METRICS
                     st.metric(
                             label="Pending Receipt", 
@@ -201,7 +212,57 @@ with col2:
                             delta_color="inverse",
                             delta_description="since last week"
                             )
-            
+                    
+                with st.container(border=True): # ----- PENDING QUOTE APPROVAL METRICS
+                    pending_quote_appr = len(syteline_data_df[syteline_data_df['Evaluation Status'] == "Pending Quote Approval"])
+                    lw_pending_quote_appr = len(lw_data_df[lw_data_df['Evaluation Status'] == "Pending Quote Approval"])
+                    
+                    metric_title_col1, metric_title_col2, metric_title_col3 = st.columns([0.5, 1, 0.3])
+                    with metric_title_col2:
+                        st.markdown("<h6>Pending Quote</h6>",unsafe_allow_html=True)
+                    
+                    metric_col1, metric_col2 = st.columns([1,1])
+                    with metric_col1:
+                        st.metric(
+                                label="Total", 
+                                value=f"{pending_quote_appr}",
+                                delta=f"{(pending_quote_appr)-(lw_pending_quote_appr)}",
+                                delta_color="inverse",
+                                delta_description="last week"
+                                )
+                    
+                    with metric_col2:
+                        st.metric(
+                                label="Disposition Received", 
+                                value=f"{len(pending_quote_appr_res_df)}",
+                                delta=f"{len(pending_quote_appr_res_df)-len(lw_pending_quote_appr_res_df)}",
+                                delta_color="inverse",
+                                delta_description="last week"
+                                )
+                    
+                with st.container(border=True): # ----- PENDING REPAIR METRICS
+                    metric_title_col1, metric_title_col2, metric_title_col3 = st.columns([0.5, 1, 0.25])
+                    with metric_title_col2:
+                        st.markdown("<h6>Pending Repair</h6>",unsafe_allow_html=True)
+                        
+                    metric_col1, metric_col2 = st.columns([1,1])
+                    with metric_col1:
+                        st.metric(
+                                label="Total", 
+                                value=f"{len(pending_repair_df)}",
+                                delta=f"{len(pending_repair_df)-len(lw_pending_repair_df)}",
+                                delta_color="inverse",
+                                delta_description="last week"
+                                )
+                    with metric_col2:
+                        st.metric(
+                                label="Overdue", 
+                                value=f"{len(overdue_pending_repair_df)}",
+                                delta=f"{len(overdue_pending_repair_df)-len(lw_overdue_pending_repair_df)}",
+                                delta_color="inverse",
+                                delta_description="last week"
+                                )
+                    
         elif stats_radio == "45 Days Pending":
             st.dataframe(pending_receipt_45_days_data(st.session_state["syteline_data_df"]), height=350)
             
