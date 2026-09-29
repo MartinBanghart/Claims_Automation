@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from utilities.python.helpers import clean_syteline_data, metrics_icon, send_email, build_filtered_dfs 
+from utilities.python.helpers import clean_syteline_data, metrics_icon, send_email, build_filtered_dfs, load_raw_csv 
 
 st.set_page_config(page_title="Valve Claims Dashboard", layout="wide")
 # -------------------------------------------
@@ -18,6 +18,16 @@ st.markdown("""
 @st.cache_data
 def load_data(uploaded_file, email_list_df):
     return clean_syteline_data(uploaded_file, email_list_df)
+
+# -------------------------------------------
+# pandas styler function that makes dataframe row light red if current date surpasses report due date (overdue)
+def highlight_overdue_rows(row):
+    due_date = row["Report Due Date"]
+
+    if pd.notna(due_date) and pd.to_datetime(due_date).normalize() < today:
+        return ["background-color: #ffe5e5"] * len(row)  # light red
+
+    return [""] * len(row)
 
 # -------------------------------------------
 today = pd.Timestamp.today().normalize()
@@ -40,8 +50,10 @@ uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"]
 # --- if a csv file has been uploaded, save this file to session state after running cleaing function on it
 # --- in addition, generate filtered dataframes for the specific claims conditions and save to session state
 if uploaded_file is not None:
+    raw_syteline_data_df = load_raw_csv(uploaded_file)
     syteline_data_df = load_data(uploaded_file, email_list_df)
     
+    st.session_state["raw_syteline_data_df"] = raw_syteline_data_df
     st.session_state["syteline_data_df"] = syteline_data_df
     st.session_state["filters"] = build_filtered_dfs(syteline_data_df, today)
 
@@ -120,7 +132,7 @@ if selected_sheet == "SyteLine Data":
     if selected_valve_group:
         filtered_syteline_df = filtered_syteline_df[
             filtered_syteline_df["Valve Group"].isin(selected_valve_group)
-        ]   
+        ]
 
     if selected_statuses:
         filtered_syteline_df = filtered_syteline_df[
@@ -308,9 +320,10 @@ with topcol6:
 
 # ----- SyteLine Data Sheet
 if selected_sheet == 'SyteLine Data':
+    styled_df = filtered_syteline_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
-        filtered_syteline_df,
-        width='stretch', #type: ignore
+        styled_df,
+        width='stretch',
         hide_index=True,
         height=800
     )
@@ -318,32 +331,35 @@ if selected_sheet == 'SyteLine Data':
 elif selected_sheet == "Evaluator Count":
     st.dataframe(
         evaluator_count_df,
-        width='stretch',  # type: ignore
+        width='stretch',
         height=800
     )
     
 # ----- Pending Quote Approval Sheet
 elif selected_sheet == "Pending Quote Approval (w/ Resp.)":
+    styled_df = pending_quote_appr_res_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
-        pending_quote_appr_res_df,
-        width='stretch', #type: ignore
+        styled_df,
+        width='stretch',
         hide_index=True,
         height=800
     )
     
 # ----- Pending Repair Sheet
 elif selected_sheet == "Pending Repair":
+    styled_df = pending_repair_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
-        pending_repair_df,
-        width='stretch', #type: ignore
+        styled_df,
+        width='stretch',
         hide_index=True,
         height=800
     )
     
 # ----- Assigned for Evaluation Sheet
 elif selected_sheet == "Assigned for Evaluation [Overdue]":
+    styled_df = overdue_assigned_eval_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
-        overdue_assigned_eval_df,
+        styled_df,
         width='stretch', #type: ignore
         hide_index=True,
         height=800
@@ -351,8 +367,9 @@ elif selected_sheet == "Assigned for Evaluation [Overdue]":
 
 # ----- Received Sheet
 elif selected_sheet == "Received [Assigned]":
+    styled_df = received_assigned_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
-        received_assigned_df,
+        styled_df, #received_assigned_df,
         width='stretch', #type: ignore
         hide_index=True,
         height=800

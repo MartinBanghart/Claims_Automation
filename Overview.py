@@ -4,13 +4,14 @@ import plotly.express as px
 from pathlib import Path
 
 from utilities.python.helpers import (  valve_group_status_chart, valve_group_timeline_chart, load_raw_csv,
-                                        clean_syteline_data, build_filtered_dfs, pending_receipt_45_days_data)
+                                        clean_syteline_data, build_filtered_dfs, pending_receipt_45_days_data,
+                                        unassigned_df_per_group )
 
 st.set_page_config(page_title="Overview", layout="wide")
 # ------------------------------------------------------------
 today = pd.Timestamp.today().normalize()
 
-email_list_df = pd.read_excel(r"utilities\excel\email_list.xlsx")
+email_list_df = pd.read_excel(r"utilities\excel\updated_email_list.xlsx")
 # ------------------------------------------------------------
 st.markdown("""
 <style>
@@ -56,8 +57,10 @@ uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"]
 # --- if a csv file has been uploaded, save this file to session state after running cleaing function on it
 # --- in addition, generate filtered dataframes for the specific claims conditions and save to session state
 if uploaded_file is not None:
+    raw_syteline_data_df = load_raw_csv(uploaded_file)
     syteline_data_df = load_data(uploaded_file, email_list_df)
     
+    st.session_state["raw_syteline_data_df"] = raw_syteline_data_df
     st.session_state["syteline_data_df"] = syteline_data_df
     st.session_state["filters"] = build_filtered_dfs(syteline_data_df, today)
 
@@ -87,20 +90,111 @@ amat_df = filters["amat_df"]
 username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
 # ------------------------------------------------------------
 
-eval_comment_lookup = st.sidebar.text_input("Enter CCR# to See Comments")
+@st.dialog("Lookup CCR", width='large', )
+def lookup_claim_dialog():
 
-if eval_comment_lookup:
-    try:
-        comments = syteline_data_df.loc[
-            syteline_data_df["CCR#"] == int(eval_comment_lookup),
-            "Evaluator's Comments ( Internal  Only)"
-        ].iloc[0]
+    ccr = st.text_input("Enter CCR#")
 
-        st.sidebar.markdown(comments)
-    except (IndexError, ValueError):
-        st.sidebar.warning("CCR# not found")
-        
+    if ccr:
+        try:
+            # ------------------
+            
+            non_warranty_status = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Non-Warranty Repair"
+            ].iloc[0]
+            
+            if non_warranty_status == 0:
+                warranty = 'Yes'
+            elif non_warranty_status == 1:
+                warranty = 'No'
+                
+                
+            reason_code = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Reason Code"
+            ].iloc[0]
+            
+            customer_name = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Name"
+            ].iloc[0]
+            
+            intake_info = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Description"
+            ].iloc[0]
+            
+            received_conditions = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Received Conditions (Appearance and Performance)"
+            ].iloc[0]
+            
+            root_cause = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Root Cause"
+            ].iloc[0]
+            
+            countermeasure = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Countermeasure"
+            ].iloc[0]
+            
+            eval_comments = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Evaluator's Comments ( Internal  Only)"
+            ].iloc[0]
+            # ------------------
+            
+            dial_col1, dial_col2 = st.columns([1,1])
+            
+            with dial_col1:
+                subdial_col1, subdial_col2, subdial_col3 = st.columns([0.4, 0.4, 1])
+                with subdial_col1:
+                    with st.container(border=True):
+                        st.markdown(f"##### Warranty")
+                        st.markdown(f"###### **{warranty}**")
+                        
+                with subdial_col2:
+                    with st.container(border=True):
+                        st.markdown(f"##### Reason Code")
+                        st.markdown(f"###### **{reason_code}**")
+                        
+                with subdial_col3:
+                    with st.container(border=True):
+                        st.markdown(f"##### Customer")
+                        st.markdown(f"###### **{customer_name}**")
+                
+                with st.container(border=True):
+                    st.markdown("### Intake Information")
+                    st.write(intake_info)
+                
+            with dial_col2:
+            
+                with st.container(border=True):
+                    st.markdown("### Received Conditions")
+                    st.write(received_conditions)
+                    st.markdown("""<hr style="height: 2px;border: none; background-color: #666; margin-top: 0px; margin-bottom: 5px;">""", unsafe_allow_html=True)
+                    
+                    st.markdown("### Root Cause")
+                    st.write(root_cause)
+                    st.markdown("""<hr style="height: 2px;border: none; background-color: #666; margin-top: 0px; margin-bottom: 5px;">""", unsafe_allow_html=True)
+                    
+                    st.markdown("### Countermeasure")
+                    st.write(countermeasure)
+                    st.markdown("""<hr style="height: 2px;border: none; background-color: #666; margin-top: 0px; margin-bottom: 5px;">""", unsafe_allow_html=True)
+                    
+                    st.markdown("### Comments")
+                    st.write(eval_comments)
 
+        except (IndexError, ValueError):
+            st.warning("CCR# not found")
+            
+with st.sidebar:
+    if st.button("Lookup CCR", width='stretch'):
+        lookup_claim_dialog()
+
+# ------------------------------------------------------------
 # # ----- SyteLine Data Sheet
 def group_subset(group_num):
     return syteline_data_df[
@@ -116,26 +210,35 @@ col1, col2 = st.columns([1,1])
 
 with col1:
     with st.container(border=True):
-        choice_vg1_graph = st.radio(label ="radio_graph1", options = ["Bar", "Timeline"], horizontal=True, index=0, label_visibility="collapsed")
+        choice_vg1_graph = st.radio(label ="radio_graph1", options = ["Bar", "Timeline", "Unassigned"], key="vg1_radio",
+                                    horizontal=True, index=0, label_visibility="collapsed")
         if choice_vg1_graph == "Bar":
             valve_group_status_chart(syteline_data_df, 1, title=f"Valve Group 1 ({len(group_subset(1))})")
         elif choice_vg1_graph == "Timeline":
             valve_group_timeline_chart(syteline_data_df, 1, title=f"Valve Group 1 Timeline ({len(group_subset(1))})")
+        elif choice_vg1_graph == "Unassigned":
+            unassigned_df_per_group(syteline_data_df, email_list_df, 1)
             
     with st.container(border=True):
-        choice_vg3_graph = st.radio(label ="radio_graph3", options = ["Bar", "Timeline"], horizontal=True, index=0, label_visibility="collapsed")
+        choice_vg3_graph = st.radio(label ="radio_graph3", options = ["Bar", "Timeline", "Unassigned"], key="vg3_radio",
+                                    horizontal=True, index=0, label_visibility="collapsed")
         if choice_vg3_graph == "Bar":
             valve_group_status_chart(syteline_data_df, 3, title=f"Valve Group 3 ({len(group_subset(3))})")
         elif choice_vg3_graph == "Timeline":
             valve_group_timeline_chart(syteline_data_df, 3, title=f"Valve Group 3 Timeline ({len(group_subset(3))})")
+        elif choice_vg3_graph == "Unassigned":
+            unassigned_df_per_group(syteline_data_df, email_list_df, 3)
 
 with col2:
     with st.container(border=True):
-        choice_vg2_graph = st.radio(label ="radio_graph2", options = ["Bar", "Timeline"], horizontal=True, index=0, label_visibility="collapsed")
+        choice_vg2_graph = st.radio(label ="radio_graph2", options = ["Bar", "Timeline", "Unassigned"], key="vg2_radio",
+                                    horizontal=True, index=0, label_visibility="collapsed")
         if choice_vg2_graph == "Bar":
             valve_group_status_chart(syteline_data_df, 2, title=f"Valve Group 2 ({len(group_subset(2))})")
         elif choice_vg2_graph == "Timeline":
             valve_group_timeline_chart(syteline_data_df, 2, title=f"Valve Group 2 Timeline ({len(group_subset(2))})")
+        elif choice_vg2_graph == "Unassigned":
+            unassigned_df_per_group(syteline_data_df, email_list_df, 2)
     
     with st.container(border=True):  
         stats_radio = st.radio(label ="stats_radio", options = ["General Stats", "45 Days Pending", "Outsiders", "AMAT"], 

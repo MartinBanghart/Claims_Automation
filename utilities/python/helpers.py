@@ -88,6 +88,7 @@ def clean_syteline_data(uploaded_file, email_list_df):
         original_data.loc[mask, new_col] = np.busday_count(original_data.loc[mask, source_col].values.astype("datetime64[D]"), today) #type:ignore
 
     # --- not foolproof method of determining if sheet is from US or CDN syteline but works for now
+    # --> just checks length of CCR number since canada is only in 10s of thousands not 100s of thousands
     if len(str(original_data['CCR#'][0])) == 6: # CCR numbers that are US 
         og_data_with_email = pd.merge(original_data.copy(), email_list_df, left_on="User Name", right_on="userUS", how="left")
     elif len(str(original_data['CCR#'][0])) == 5: # CCR numbers that are US 
@@ -109,9 +110,9 @@ def build_filtered_dfs(df, today):
     username_notna_mask = (
         df["User Name"].notna()
         & (df["User Name"].astype(str).str.strip() != "")
-    )
+    ) # mask to consolidate reused logic
     
-    email_notna_mask = (df["email"].notna())
+    email_notna_mask = (df["email"].notna()) # mask to consolidate reused logic
 
 
     # setting up evaluator count to have unassigned index value
@@ -131,9 +132,9 @@ def build_filtered_dfs(df, today):
 
         "overdue_assigned_eval_df": df[
             (df["Evaluation Status"] == "Assigned for Evaluation")
-            & username_notna_mask
+            & username_notna_mask # username is not na
             & (df["Report Due Date"] < today)
-            & email_notna_mask
+            & email_notna_mask # email is not na
         ],
 
         "received_df": df[
@@ -142,14 +143,14 @@ def build_filtered_dfs(df, today):
         
         "received_assigned_df": df[
             (df["Evaluation Status"] == "Received")
-            & username_notna_mask
-            & email_notna_mask
+            & username_notna_mask # username is not na
+            & email_notna_mask # email is not na
         ],
 
         "pending_repair_df": df[
             (df["Evaluation Status"] == "Pending Repair")
-            & username_notna_mask
-            & email_notna_mask
+            & username_notna_mask # username is not na
+            & email_notna_mask # email is not na
         ],
         
         "overdue_pending_repair_df": df[(df['Evaluation Status'] == "Pending Repair") 
@@ -161,7 +162,7 @@ def build_filtered_dfs(df, today):
             (df["Evaluation Status"] == "Pending Quote Approval")
             & df["Customer Response"].notna()
             & username_notna_mask
-            & email_notna_mask
+            & email_notna_mask # email is not na
         ],
 
         "pending_receipt_df": df[
@@ -169,8 +170,8 @@ def build_filtered_dfs(df, today):
         ],
         
         "not_from_valve_groups_df": df[
-            df["Valve Group"].isna()
-            & username_notna_mask
+            df["Valve Group"].isna() # valve group is na
+            & username_notna_mask # user name is not na
         ],
         
         "amat_df": df[
@@ -199,6 +200,7 @@ def metrics_icon(
         font_color: str = "white", 
         border_color: str = '#666'
         ):
+    
     st.markdown(
         f"""
         <div style="
@@ -230,8 +232,8 @@ def clean_comments(text):
     if pd.isna(text):
         return ""
     text = str(text)
-    text = text.replace("_x000D_", "\n") # Replace Excel carriage returns
-    text = re.sub(r"<[^>]+>", "", text)  # Remove HTML tags
+    text = text.replace("_x000D_", "\n") # replace Excel carriage returns
+    text = re.sub(r"<[^>]+>", "", text)  # remove HTML tags
     return text.strip()
 
 # --------------------------------------------------------------------------------------------------------------
@@ -240,8 +242,6 @@ def clean_comments(text):
 # --- Due to varied emails between US and CDN syteline, US_CDN argument must be explicitly stated to use proper emails
 
 def send_email(US_CDN, status, claims_data, test_recipient=None):
-    
-    # email_list_df = pd.read_excel(r'utilities\excel\email_list.xlsx')
     
     test_mode = US_CDN == "Test"
     
@@ -529,7 +529,10 @@ def valve_group_status_chart(
         fig,
         width='content'
     )
-
+# --------------------------------------------------------------------------------------------------------------
+# function to create timeline charts by valve group for assigned claims
+# -- each line represent an engineer and is populated by marks that are their claims plotted vs time
+# -- the whole chart is filtered to one valve group (1/2/3)
 def valve_group_timeline_chart(df, valve_group, title=None, height=375):
 
     sixty_days_ago = pd.Timestamp.today().normalize() - pd.Timedelta(days=60)
@@ -663,3 +666,54 @@ def load_product_series_data(file_path):
     )
     
     return final_data, created_date
+
+# --------------------------------------------------------------------
+
+def unassigned_df_per_group(
+    syteline_dataframe,
+    email_dataframe,
+    valve_group
+):
+    
+    def highlight_can_assign(row):
+        if row["Can_Assign"] != 0:
+            return ["background-color: #fff3cd"] * len(row) # light yellow
+        return [""] * len(row)
+
+    assigned_users = set(
+        syteline_dataframe["User Name"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .unique()
+    )
+
+    group_df = email_dataframe[
+        email_dataframe["Valve Group"] == valve_group
+    ].copy()
+
+    assigned_mask = (
+        group_df["userUS"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .isin(assigned_users)
+        |
+        group_df["userCDN"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .isin(assigned_users)
+    )
+    
+    # filter for any matching User Name from overall data and userUS/userCDN from email data
+    output_email_df = group_df[~assigned_mask]
+    # filter out managers
+    output_email_df = output_email_df[output_email_df["NOTES"] != 'Manager']
+    # reorder and select specific columns
+    final_df = output_email_df[['name', 'userUS', 'userCDN', 'Can_Assign', 'NOTES']]
+    
+    st.dataframe(final_df.style.apply(highlight_can_assign, axis=1), height=375)
