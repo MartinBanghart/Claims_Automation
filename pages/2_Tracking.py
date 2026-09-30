@@ -2,25 +2,11 @@ import streamlit as st
 import pandas as pd
 import math
 
-from utilities.python.helpers import clean_syteline_data, build_filtered_dfs 
+from utilities.python.global_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
+                                                    build_filtered_dfs, page_config
+                                                    )
 
-st.set_page_config(page_title="Tracking", layout="wide")
-# -------------------------------------------
-st.markdown("""
-<style>
-.block-container {
-    padding-top: 3rem;
-    padding-bottom: 0.5rem;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -------------------------------------------
-# -------------------------------------------
-@st.cache_data
-def load_data(uploaded_file, email_list_df):
-    return clean_syteline_data(uploaded_file, email_list_df)
-
+page_config('Tracking', 'wide')
 # -------------------------------------------
 def display_claim_card(cur_claim, short_list_df, short_list_history_df):
 

@@ -1,197 +1,10 @@
 import streamlit as st
 import pandas as pd
-from pandas.tseries.offsets import BDay
-import numpy as np
-import csv
 import re
 import pythoncom
 import win32com.client as win32
 import plotly.express as px
 from openpyxl import load_workbook
-
-# -----------------------------------------------------------------------
-def load_raw_csv(file_source):
-
-    # streamlit uploaded file
-    if hasattr(file_source, "seek"):
-        file_source.seek(0) # resets cursor for the file being read to the beginning
-
-    # standard ToExcel version of syteline data from the online version
-    # tries to read it as UTF-16 tab-delimited data
-    try:
-        return pd.read_csv(
-            file_source,
-            encoding="utf-16",
-            sep="\t"
-        )
-    except Exception:
-        pass
-
-    if hasattr(file_source, "seek"):
-        file_source.seek(0)
-
-    try:
-        return pd.read_csv(
-            file_source,
-            encoding="utf-16",
-            sep="\t",
-            engine="python"
-        )
-    except Exception:
-        pass
-
-    if hasattr(file_source, "seek"):
-        file_source.seek(0)
-
-    return pd.read_csv(
-        file_source,
-        encoding="utf-16",
-        sep="\t",
-        quoting=csv.QUOTE_NONE, # this solves an issue with the desktop saved version of syteline excel exports - parser does not treat quotes as quotes
-        engine="python"
-    )
-# --------------------------------------------------------------------------------------------------------
-def clean_syteline_data(uploaded_file, email_list_df):
-    
-    # --- Variables
-    buis_days_till_claim_due = 10
-    
-    # --- loading data from csv into dataframe
-    # original_data = pd.read_csv(uploaded_file, encoding="utf-16",sep="\t", engine="python")
-    
-    original_data = load_raw_csv(uploaded_file)
-
-    # # addding Report Due Date, Days Since Assigned, Days Since Approved, and Days Since Quote Sent columns
-    date_cols = ["Assigned Date", "Approval Date", "Quote Send Date"]
-
-    for col in date_cols:
-        original_data[col] = pd.to_datetime(original_data[col], errors="coerce")
-
-    # --- setting Report Due Date column 
-    original_data["Report Due Date"] = (original_data["Assigned Date"] + BDay(buis_days_till_claim_due)).dt.strftime("%m/%d/%Y")
-    
-    original_data["Report Due Date"] = pd.to_datetime(original_data["Report Due Date"],errors="coerce")
-
-    today = np.datetime64(pd.Timestamp.today().normalize(), "D")
-
-    # --- creating Days Since columns based off their respective intial date columns
-    for source_col, new_col in [
-        ("Assigned Date", "Days Since Assigned"),
-        ("Approval Date", "Days Since Approved"),
-        ("Quote Send Date", "Days Since Quote Sent"),
-    ]:
-        
-        original_data[new_col] = pd.NA
-
-        mask = original_data[source_col].notna()
-
-        original_data.loc[mask, new_col] = np.busday_count(original_data.loc[mask, source_col].values.astype("datetime64[D]"), today) #type:ignore
-
-    # --- not foolproof method of determining if sheet is from US or CDN syteline but works for now
-    # --> just checks length of CCR number since canada is only in 10s of thousands not 100s of thousands
-    if len(str(original_data['CCR#'][0])) == 6: # CCR numbers that are US 
-        og_data_with_email = pd.merge(original_data.copy(), email_list_df, left_on="User Name", right_on="userUS", how="left")
-    elif len(str(original_data['CCR#'][0])) == 5: # CCR numbers that are US 
-        og_data_with_email = pd.merge(original_data.copy(), email_list_df, left_on="User Name", right_on="userCDN", how="left")
-
-    # --- setting final dataframe with similar column ordering to original excel macro
-    clean_data = og_data_with_email[["Evaluation Group", "CCR#", "name", "User Name", "email", "Valve Group",
-                            "Name", "Item",	"Evaluation Status", "Create Date",	
-                            "Assigned Date", "Report Due Date", "Approval Date", "Quote Send Date",
-                            "Quote Due Date", "Customer Response", "Evaluator's Comments ( Internal  Only)",
-                            "Description", "Days Since Assigned", "Days Since Approved", "Days Since Quote Sent" ]]
-
-    return clean_data
-
-# --------------------------------------------------------------------------------------------------------------
-# --- generates the dataframes for certain conditions from the cleaned syteline data for resuse
-def build_filtered_dfs(df, today):
-    
-    username_notna_mask = (
-        df["User Name"].notna()
-        & (df["User Name"].astype(str).str.strip() != "")
-    ) # mask to consolidate reused logic
-    
-    email_notna_mask = (df["email"].notna()) # mask to consolidate reused logic
-
-
-    # setting up evaluator count to have unassigned index value
-    pivot_df = df.copy()
-    pivot_df["User Name"] = (
-        pivot_df["User Name"]
-        .fillna("#Unassigned")
-        .replace("", "#Unassigned")
-        )
-        
-
-    return {
-        "assigned_eval_df": df[
-            (df["Evaluation Status"] == "Assigned for Evaluation")
-            & username_notna_mask
-        ],
-
-        "overdue_assigned_eval_df": df[
-            (df["Evaluation Status"] == "Assigned for Evaluation")
-            & username_notna_mask # username is not na
-            & (df["Report Due Date"] < today)
-            & email_notna_mask # email is not na
-        ],
-
-        "received_df": df[
-            (df["Evaluation Status"] == "Received")
-        ],
-        
-        "received_assigned_df": df[
-            (df["Evaluation Status"] == "Received")
-            & username_notna_mask # username is not na
-            & email_notna_mask # email is not na
-        ],
-
-        "pending_repair_df": df[
-            (df["Evaluation Status"] == "Pending Repair")
-            & username_notna_mask # username is not na
-            & email_notna_mask # email is not na
-        ],
-        
-        "overdue_pending_repair_df": df[(df['Evaluation Status'] == "Pending Repair") 
-            & (username_notna_mask)
-            & (df["Report Due Date"] < today)
-        ],
-
-        "pending_quote_appr_df": df[
-            (df["Evaluation Status"] == "Pending Quote Approval")
-            & df["Customer Response"].notna()
-            & username_notna_mask
-            & email_notna_mask # email is not na
-        ],
-
-        "pending_receipt_df": df[
-            (df["Evaluation Status"] == "Pending Receipt")
-        ],
-        
-        "not_from_valve_groups_df": df[
-            df["Valve Group"].isna() # valve group is na
-            & username_notna_mask # user name is not na
-        ],
-        
-        "amat_df": df[
-            df["Name"].str.contains(r"Applied Materials", case=False, na=False)
-            & (df["Evaluation Status"] == "Pending Quote Approval") # claim is Pending Quote Approval
-            & ((today - df["Quote Send Date"]).dt.days >= 14) # 45 days have elapsed since it quote was sent
-            & (df["Customer Response"].isna()) # no customer response has been logged
-        ],
-        
-        "evaluator_count": pd.pivot_table(
-                    pivot_df,
-                    index="User Name",
-                    columns="Evaluation Status",
-                    values="CCR#",
-                    aggfunc="count",
-                    fill_value=0,
-                    margins=True,
-                    margins_name="Total"
-        )
-    }
 
 # --------------------------------------------------------------------------------------------------------------
 def metrics_icon(
@@ -717,3 +530,223 @@ def unassigned_df_per_group(
     final_df = output_email_df[['name', 'userUS', 'userCDN', 'Can_Assign', 'NOTES']]
     
     st.dataframe(final_df.style.apply(highlight_can_assign, axis=1), height=375)
+    
+# ---------------------------------------------------------------------------------------------
+# for overview page - st.Dialog() to lookup a CCR and get a summary
+# ---------------------------------------------------------------------------------------------
+
+def dialog_info_card(title, value):
+    st.markdown(
+        f"""
+        <div style="line-height:1.5; padding-bottom:6px;">
+            <span style="color:#0082CB; font-weight:bold; font-size:0.9rem;">
+                {title}
+            </span><br>
+            <span style="font-size:0.9rem;">
+                {value}
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+def dialog_text_section(title, value):
+    st.markdown(
+        f"""
+        <div style="line-height:1.3;">
+            <div style="
+                color:#0082CB;
+                font-weight:800;
+                font-size:0.95rem;
+                margin-bottom:2px;
+            ">
+                {title}
+            </div>
+            <div style="font-size:0.9rem;padding-bottom:2px;">
+                {value}
+        """,
+            unsafe_allow_html=True,
+        )
+
+def update_card(update_num, update_status, update_date, update_notes):
+    update_notes = str(update_notes).replace("\n", "<br>")
+
+    with st.container(border=True):
+
+        st.markdown(
+            f"""
+            <div style="line-height:1.15;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.95rem;font-weight:600;color:#0082CB;">
+                        Update {update_num}
+                    </span>
+                    <span style="font-size:0.85rem;color:#888;">
+                        {update_date:%m/%d/%Y}
+                    </span>
+                </div>
+                <div style="
+                    font-size:0.85rem;
+                    color:#666;
+                    margin-top:2px;
+                    margin-bottom:4px;
+                ">
+                    {update_status}
+                </div>
+                <div style="
+                    font-size:0.9rem;
+                    line-height:1.2;
+                    padding-bottom:10px
+                ">
+                    {update_notes}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+@st.dialog(" ", width='large', )
+def lookup_claim_dialog(history_df):
+
+    ccr = st.text_input("Enter CCR#")
+    
+    if ccr:
+        try:
+            
+            cur_updates = (
+                history_df[
+                    history_df["CCR#"] == int(ccr)
+                ]
+                .sort_values("Update_Date", ascending=False)
+            )
+            # ------------------
+            
+            non_warranty_status = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Non-Warranty Repair"
+            ].iloc[0]
+            
+            if non_warranty_status == 0:
+                warranty = 'Yes'
+            elif non_warranty_status == 1:
+                warranty = 'No'
+                
+            reason_code = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Reason Code"
+            ].iloc[0]
+            
+            eng_assigned = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "User Name"
+            ].iloc[0]
+            
+            part_num = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Item"
+            ].iloc[0]
+            
+            date_assign = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Assigned Date"
+            ].iloc[0]
+            
+            customer_name = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Name"
+            ].iloc[0]
+            
+            intake_info = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Description"
+            ].iloc[0]
+            
+            received_conditions = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Received Conditions (Appearance and Performance)"
+            ].iloc[0]
+            
+            root_cause = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Root Cause"
+            ].iloc[0]
+            
+            countermeasure = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Countermeasure"
+            ].iloc[0]
+            
+            eval_comments = st.session_state['raw_syteline_data_df'].loc[
+                st.session_state['raw_syteline_data_df']["CCR#"] == int(ccr),
+                "Evaluator's Comments ( Internal  Only)"
+            ].iloc[0]
+            # ------------------
+            
+            dial_col1, dial_col2 = st.columns([1,1])
+            
+            with dial_col1:
+                subdial_col1, subdial_col2, subdial_col3 = st.columns([0.5, 0.5, 1])
+                with subdial_col1:
+                    with st.container(border=True):
+                        dialog_info_card('Engineer', eng_assigned)
+                        
+                    with st.container(border=True):
+                        dialog_info_card('Warranty', warranty)
+                        
+                with subdial_col2:
+                    with st.container(border=True):
+                        dialog_info_card('Part Number', part_num)
+                        
+                    with st.container(border=True):
+                        dialog_info_card('Reason Code', reason_code)
+                        
+                with subdial_col3:
+                    with st.container(border=True):
+                        dialog_info_card('Date Assigned', date_assign)
+                        
+                    with st.container(border=True):
+                        dialog_info_card('Customer', customer_name)
+                
+                with st.container(border=True):
+                    dialog_text_section('Intake Information', intake_info)
+                    
+                    
+                st.markdown("##### Claim Updates")
+
+                for ind, (_, row) in enumerate(cur_updates.iterrows()):
+                    update_card(
+                        update_num=ind + 1,
+                        update_status=row["Update_Status"],
+                        update_date=row["Update_Date"],
+                        update_notes=row["Update_Notes"],
+                    )
+                
+            with dial_col2:
+            
+                with st.container(border=True):
+                    dialog_text_section('Received Conditions', received_conditions)
+                    st.markdown("""<hr style="height: 2px;border: none; background-color: #666; margin-top: 0px; margin-bottom: 0px;">""", unsafe_allow_html=True)
+                    
+                    dialog_text_section('Root Cause', root_cause)
+                    st.markdown("""<hr style="height: 2px;border: none; background-color: #666; margin-top: 0px; margin-bottom: 0px;">""", unsafe_allow_html=True)
+                    
+                    dialog_text_section('Countermeasure', countermeasure)
+                    st.markdown("""<hr style="height: 2px;border: none; background-color: #666; margin-top: 0px; margin-bottom: 0px;">""", unsafe_allow_html=True)
+                    
+                    dialog_text_section('Comments', eval_comments)
+                    
+
+        except (IndexError, ValueError):
+            st.warning("CCR# not found")
+            
+# ------------------------------------------------------------------------------------------------------------            
+# pandas styler function that makes dataframe row light red if current date surpasses report due date (overdue)
+def highlight_overdue_rows(row):
+    today = pd.Timestamp.today().normalize()
+    due_date = row["Report Due Date"]
+
+    if pd.notna(due_date) and pd.to_datetime(due_date).normalize() < today:
+        return ["background-color: #ffe5e5"] * len(row)  # light red
+
+    return [""] * len(row)

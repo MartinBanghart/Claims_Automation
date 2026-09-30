@@ -1,38 +1,20 @@
 import streamlit as st
 import pandas as pd
 
-from utilities.python.helpers import clean_syteline_data, metrics_icon, send_email, build_filtered_dfs, load_raw_csv 
+from utilities.python.global_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
+                                                    build_filtered_dfs, page_config
+                                                    )
 
-st.set_page_config(page_title="Valve Claims Dashboard", layout="wide")
-# -------------------------------------------
-st.markdown("""
-<style>
-.block-container {
-    padding-top: 3rem;
-    padding-bottom: 0.5rem;
-}
-</style>
-""", unsafe_allow_html=True)
+from utilities.python.helpers import metrics_icon, send_email, highlight_overdue_rows 
 
-# -------------------------------------------
-@st.cache_data
-def load_data(uploaded_file, email_list_df):
-    return clean_syteline_data(uploaded_file, email_list_df)
-
-# -------------------------------------------
-# pandas styler function that makes dataframe row light red if current date surpasses report due date (overdue)
-def highlight_overdue_rows(row):
-    due_date = row["Report Due Date"]
-
-    if pd.notna(due_date) and pd.to_datetime(due_date).normalize() < today:
-        return ["background-color: #ffe5e5"] * len(row)  # light red
-
-    return [""] * len(row)
-
-# -------------------------------------------
-today = pd.Timestamp.today().normalize()
-
-email_list_df = pd.read_excel(r"utilities\excel\email_list.xlsx")
+page_config("Dashboard", "wide")
+# ------------------------------------------------------------
+(   today, 
+    short_list_claims_df, 
+    short_list_history_df, 
+    email_list_df,
+    lastweek_path
+                                ) = global_dashboard_vars_and_data()
 
 sheets = [
     "SyteLine Data",
@@ -65,19 +47,7 @@ if "syteline_data_df" not in st.session_state:
 # --------------------------------------------------------------------------------
 # loading data
 syteline_data_df = st.session_state["syteline_data_df"]
-filters = st.session_state["filters"]
-
-assigned_eval_df = filters["assigned_eval_df"]
-overdue_assigned_eval_df = filters["overdue_assigned_eval_df"]
-received_df = filters["received_df"]
-received_assigned_df = filters["received_assigned_df"]
-pending_repair_df = filters["pending_repair_df"]
-overdue_pending_repair_df = filters["overdue_pending_repair_df"]
-pending_quote_appr_res_df = filters["pending_quote_appr_df"]
-pending_receipt_df = filters["pending_receipt_df"]
-evaluator_count_df = filters["evaluator_count"]
-not_from_valve_groups_df = filters["not_from_valve_groups_df"]
-amat_df = filters["amat_df"]
+current = st.session_state["filters"]
 
 # --- reusable filters
 username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df["User Name"].astype(str).str.strip() != ""))
@@ -176,19 +146,19 @@ with topcol1:
         status_map = {
             "Overdue": (
                 "Overdue",
-                overdue_assigned_eval_df
+                current["overdue_assigned_eval_df"]
             ),
             "Pending Repair": (
                 "To be Closed",
-                pending_repair_df
+                current["pending_repair_df"]
             ),
             "Received": (
                 "Newly Assigned",
-                received_assigned_df
+                current["received_assigned_df"]
             ),
             "Quote Approved": (
                 "Quote Approved",
-                pending_quote_appr_res_df
+                current["pending_quote_appr_res_df"]
             )
         }
 
@@ -269,15 +239,15 @@ with topcol3:
     if selected_sheet == 'SyteLine Data':
         cur_df = filtered_syteline_df
     elif selected_sheet == 'Evaluator Count':
-        cur_df = evaluator_count_df
+        cur_df = current["evaluator_count"]
     elif selected_sheet == "Pending Quote Approval (w/ Resp.)":
-        cur_df = pending_quote_appr_res_df
+        cur_df = current["pending_quote_appr_res_df"]
     elif selected_sheet == "Pending Repair":
-        cur_df = pending_repair_df
+        cur_df = current["pending_repair_df"]
     elif selected_sheet == "Assigned for Evaluation [Overdue]":
-        cur_df = overdue_assigned_eval_df
+        cur_df = current["overdue_assigned_eval_df"]
     elif selected_sheet == "Received [Assigned]":
-        cur_df = received_assigned_df
+        cur_df = current["received_assigned_df"]
     
     metrics_icon(
         text=f"Current | {len(cur_df)}",
@@ -309,7 +279,7 @@ with topcol5:
 # ----------------------------------------------------------------------------------------------
 with topcol6:
     metrics_icon(
-        text=f"Pending Rec | {len(pending_receipt_df)}", 
+        text=f"Pending Rec | {len(current["pending_receipt_df"])}", 
         font_color='#a16207',
         background_color='#fef9d7',
         border_color='#a16207',   
@@ -330,14 +300,14 @@ if selected_sheet == 'SyteLine Data':
 # ----- Evaluator Count
 elif selected_sheet == "Evaluator Count":
     st.dataframe(
-        evaluator_count_df,
+        current["evaluator_count"],
         width='stretch',
         height=800
     )
     
 # ----- Pending Quote Approval Sheet
 elif selected_sheet == "Pending Quote Approval (w/ Resp.)":
-    styled_df = pending_quote_appr_res_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
+    styled_df = current["pending_quote_appr_res_df"].sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
         styled_df,
         width='stretch',
@@ -347,7 +317,7 @@ elif selected_sheet == "Pending Quote Approval (w/ Resp.)":
     
 # ----- Pending Repair Sheet
 elif selected_sheet == "Pending Repair":
-    styled_df = pending_repair_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
+    styled_df = current["pending_repair_df"].sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
         styled_df,
         width='stretch',
@@ -357,7 +327,7 @@ elif selected_sheet == "Pending Repair":
     
 # ----- Assigned for Evaluation Sheet
 elif selected_sheet == "Assigned for Evaluation [Overdue]":
-    styled_df = overdue_assigned_eval_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
+    styled_df = current["overdue_assigned_eval_df"].sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
         styled_df,
         width='stretch', #type: ignore
@@ -367,7 +337,7 @@ elif selected_sheet == "Assigned for Evaluation [Overdue]":
 
 # ----- Received Sheet
 elif selected_sheet == "Received [Assigned]":
-    styled_df = received_assigned_df.sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
+    styled_df = current["received_assigned_df"].sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
         styled_df, #received_assigned_df,
         width='stretch', #type: ignore
