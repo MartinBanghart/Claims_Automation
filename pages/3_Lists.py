@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from utilities.python.global_vars_and_funcs import load_data, page_config
+from utilities.python.general_vars_and_funcs import load_data, page_config
 
 from utilities.python.helpers import load_product_series_data 
 # -------------------------------------------

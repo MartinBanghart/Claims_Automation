@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from utilities.python.global_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
+from utilities.python.general_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
                                                     build_filtered_dfs, page_config
                                                     )
+
+from utilities.python.overview_helpers import update_last_week_dialog
 
 from utilities.python.helpers import (  valve_group_status_chart, valve_group_timeline_chart,
                                         pending_receipt_45_days_data, unassigned_df_per_group, lookup_claim_dialog
@@ -21,7 +23,7 @@ page_config("Overview", "wide")
 
 # ------------------------------ Main Data Upload --------------------------------
 # creating location for user to upload file
-uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"] )
+uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"])
 
 # --- if a csv file has been uploaded, save this file to session state after running a cleaning function on it
 # --- in addition, generate filtered dataframes for the specific claims conditions and save to session state
@@ -60,8 +62,15 @@ username_notna_mask = (syteline_data_df["User Name"].notna() & (syteline_data_df
 # ------------------------------------------------------------
 # --- dialog pop up that allows for viewing summary of selected claim
 with st.sidebar:
+    st.divider()
+    
     if st.button("Lookup CCR", width='stretch'):
         lookup_claim_dialog(short_list_history_df)
+        
+    st.divider()
+    
+    if st.button("Update LastWeek Data", width='stretch'):
+        update_last_week_dialog()
 
 # ------------------------------------------------------------
 # # ----- function that creates filter for a specific valve group; simplifies graph loading functions
@@ -111,7 +120,7 @@ with col2:
     
     with st.container(border=True):  
         stats_radio = st.radio(label ="stats_radio", 
-                                options = ["Stats", "Pending Rcpt. (+45 d)", "AMAT No Resp. (+45 d)", "Non-Valve"], 
+                                options = ["Stats", "Pend. Rcpt.(+45 d)", "AMAT No Resp.(+45 d)", "Non-AMAT Quote(+30 d)", "Non-Valve"], 
                                 horizontal=True, index=0, label_visibility="collapsed")
         
         subcol1, subcol2 = st.columns([1,1])
@@ -233,11 +242,14 @@ with col2:
                                 delta_description="last week"
                                 )
                     
-        elif stats_radio == "Pending Rcpt. (+45 d)":
+        elif stats_radio == "Pend. Rcpt.(+45 d)":
             st.dataframe(pending_receipt_45_days_data(st.session_state["syteline_data_df"]), height=350)    
             
-        elif stats_radio == "AMAT No Resp. (+45 d)":
+        elif stats_radio == "AMAT No Resp.(+45 d)":
             st.dataframe(current["amat_df"], height=350)
+            
+        elif stats_radio == "Non-AMAT Quote(+30 d)":
+            st.dataframe(current["non_amat_quote_30_day_plus"], height=350)
             
         elif stats_radio == "Non-Valve":
             st.dataframe(current["not_from_valve_groups_df"], height=350)

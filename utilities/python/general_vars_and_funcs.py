@@ -208,8 +208,14 @@ def build_filtered_dfs(df, today):
         "amat_df": df[
             df["Name"].str.contains(r"Applied Materials", case=False, na=False)
             & (df["Evaluation Status"] == "Pending Quote Approval") # claim is Pending Quote Approval
-            & ((today - df["Quote Send Date"]).dt.days >= 14) # 45 days have elapsed since it quote was sent
+            & ((today - df["Quote Send Date"]).dt.days >= 45) # 45 days have elapsed since it quote was sent
             & (df["Customer Response"].isna()) # no customer response has been logged
+        ],
+        
+        "non_amat_quote_30_day_plus": df[
+            ~df["Name"].str.contains(r"Applied Materials", case=False, na=False)
+            & (df["Evaluation Status"] == "Pending Quote Approval") # claim is Pending Quote Approval
+            & ((today - df["Quote Send Date"]).dt.days >= 30) # 45 days have elapsed since it quote was sent
         ],
         
         "evaluator_count": pd.pivot_table(

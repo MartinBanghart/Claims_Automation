@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from utilities.python.global_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
+from utilities.python.general_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
                                                     build_filtered_dfs, page_config
                                                     )
 
@@ -21,8 +21,8 @@ sheets = [
     "Evaluator Count",
     "Pending Quote Approval (w/ Resp.)",
     "Pending Repair",
-    "Assigned for Evaluation [Overdue]",
-    "Received [Assigned]"
+    "Assigned for Eval (Overdue)",
+    "Received (Assigned)"
 ]
 # ------------------------------ Main Data Upload --------------------------------
 # --------------------------------------------------------------------------------
@@ -244,9 +244,9 @@ with topcol3:
         cur_df = current["pending_quote_appr_res_df"]
     elif selected_sheet == "Pending Repair":
         cur_df = current["pending_repair_df"]
-    elif selected_sheet == "Assigned for Evaluation [Overdue]":
+    elif selected_sheet == "Assigned for Eval (Overdue)":
         cur_df = current["overdue_assigned_eval_df"]
-    elif selected_sheet == "Received [Assigned]":
+    elif selected_sheet == "Received (Assigned)":
         cur_df = current["received_assigned_df"]
     
     metrics_icon(
@@ -326,21 +326,21 @@ elif selected_sheet == "Pending Repair":
     )
     
 # ----- Assigned for Evaluation Sheet
-elif selected_sheet == "Assigned for Evaluation [Overdue]":
+elif selected_sheet == "Assigned for Eval (Overdue)":
     styled_df = current["overdue_assigned_eval_df"].sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
         styled_df,
-        width='stretch', #type: ignore
+        width='stretch',
         hide_index=True,
         height=800
     )
 
 # ----- Received Sheet
-elif selected_sheet == "Received [Assigned]":
+elif selected_sheet == "Received (Assigned)":
     styled_df = current["received_assigned_df"].sort_values('Create Date', ascending=True).style.apply(highlight_overdue_rows, axis=1)
     st.dataframe(
         styled_df, #received_assigned_df,
-        width='stretch', #type: ignore
+        width='stretch',
         hide_index=True,
         height=800
     )

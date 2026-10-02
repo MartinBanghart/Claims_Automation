@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import math
 
-from utilities.python.global_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
+from utilities.python.general_vars_and_funcs import (global_dashboard_vars_and_data, load_data, load_raw_csv, 
                                                     build_filtered_dfs, page_config
                                                     )
 
@@ -79,8 +79,10 @@ uploaded_file = st.sidebar.file_uploader( "Upload SyteLine Export", type=["csv"]
 # --- if a csv file has been uploaded, save this file to session state after running cleaing function on it
 # --- in addition, generate filtered dataframes for the specific claims conditions and save to session state
 if uploaded_file is not None:
+    raw_syteline_data_df = load_raw_csv(uploaded_file)
     syteline_data_df = load_data(uploaded_file, email_list_df)
     
+    st.session_state["raw_syteline_data_df"] = raw_syteline_data_df
     st.session_state["syteline_data_df"] = syteline_data_df
     st.session_state["filters"] = build_filtered_dfs(syteline_data_df, today)
 

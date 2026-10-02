@@ -7,7 +7,7 @@ Steps (copy anything within quotations, don't include the quotes)
 
 3: Update Environment variables (Edit Environment Variables for your Account)
 --> 3.1: Add a user Variable called "Path" if it doesn't exist
---> 3.2: Click to edit and add linke to python Scripts (something like this "C:\Users\banghamf\AppData\Local\Programs\Python\Python314\Bin\")
+--> 3.2: Click to edit and add link to python Scripts (something like this "C:\Users\banghamf\AppData\Local\Programs\Python\Python314\Bin\")
 
 4: Open up VScode and click File > Open Folder and select the folder where the code exists
 
